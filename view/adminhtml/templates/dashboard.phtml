@@ -1,0 +1,309 @@
+<?php
+/** @var \Angeo\RobotsTxtAeo\Block\Adminhtml\Dashboard $block */
+$validateUrl = $block->getValidateUrl();
+$previewUrl  = $block->getPreviewUrl();
+$configUrl   = $block->getConfigUrl();
+$robotsUrl   = $block->getRobotsUrl();
+$isEnabled   = $block->isModuleEnabled();
+$mode        = $block->getMode();
+$enabledBots = $block->getEnabledBots();
+$allBots     = $block->getAllBots();
+$formKey     = $block->getFormKey();
+?>
+
+<style>
+.angeo-dashboard { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1100px; }
+.angeo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.angeo-header h1 { font-size: 22px; font-weight: 600; color: #1a1a1a; margin: 0; }
+.angeo-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+    padding: 4px 10px; border-radius: 20px; }
+.angeo-badge.enabled  { background: #d1fae5; color: #065f46; }
+.angeo-badge.disabled { background: #fee2e2; color: #991b1b; }
+
+.angeo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+@media (max-width: 900px) { .angeo-grid { grid-template-columns: 1fr; } }
+
+.angeo-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+.angeo-card-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex;
+    align-items: center; justify-content: space-between; }
+.angeo-card-header h2 { font-size: 14px; font-weight: 600; color: #374151; margin: 0; }
+.angeo-card-body { padding: 20px; }
+
+.angeo-btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px;
+    border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+    transition: opacity .15s; text-decoration: none; }
+.angeo-btn:hover { opacity: .85; }
+.angeo-btn-primary { background: #2563eb; color: #fff; }
+.angeo-btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+.angeo-btn-success { background: #059669; color: #fff; }
+.angeo-btn:disabled { opacity: .5; cursor: not-allowed; }
+.angeo-btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.angeo-bot-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.angeo-bot-table th { text-align: left; padding: 8px 12px; background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; color: #6b7280; }
+.angeo-bot-table td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.angeo-bot-table tr:last-child td { border-bottom: none; }
+.angeo-status-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+    font-weight: 700; padding: 3px 8px; border-radius: 4px; }
+.angeo-status-badge.pass     { background: #d1fae5; color: #065f46; }
+.angeo-status-badge.fail     { background: #fee2e2; color: #991b1b; }
+.angeo-status-badge.disabled { background: #f3f4f6; color: #9ca3af; }
+.angeo-status-badge.pending  { background: #fef3c7; color: #92400e; }
+
+.angeo-pre { background: #0f172a; color: #e2e8f0; font-family: 'Courier New', monospace;
+    font-size: 12px; line-height: 1.8; padding: 16px; border-radius: 6px; overflow-x: auto;
+    max-height: 420px; overflow-y: auto; white-space: pre; margin: 0; }
+
+.angeo-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.angeo-alert { padding: 12px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+.angeo-alert.warn    { background: #fffbeb; border: 1px solid #fcd34d; color: #78350f; }
+.angeo-alert.success { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
+.angeo-alert.error   { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+
+.angeo-meta { font-size: 12px; color: #9ca3af; margin-top: 8px; }
+</style>
+
+<div class="angeo-dashboard">
+
+    <div class="angeo-header">
+        <h1>🤖 Robots.txt AEO Dashboard</h1>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <span class="angeo-badge <?= $isEnabled ? 'enabled' : 'disabled' ?>">
+                <?= $isEnabled ? '✓ Module enabled' : '✗ Module disabled' ?>
+            </span>
+            <span class="angeo-badge" style="background:#e0e7ff;color:#3730a3;">
+                Mode: <?= $block->escapeHtml($mode) ?>
+            </span>
+            <a href="<?= $block->escapeUrl($configUrl) ?>" class="angeo-btn angeo-btn-secondary">
+                ⚙ Settings
+            </a>
+        </div>
+    </div>
+
+    <?php if (!$isEnabled): ?>
+    <div class="angeo-alert warn">
+        Module is disabled. Enable it in <a href="<?= $block->escapeUrl($configUrl) ?>">Settings</a> to start injecting AI bot rules.
+    </div>
+    <?php endif; ?>
+
+    <div class="angeo-btn-row" style="margin-bottom:24px;">
+        <button class="angeo-btn angeo-btn-primary" id="angeo-btn-validate">
+            <span id="validate-spinner" style="display:none;" class="angeo-spinner"></span>
+            ✓ Validate live robots.txt
+        </button>
+        <button class="angeo-btn angeo-btn-success" id="angeo-btn-preview">
+            <span id="preview-spinner" style="display:none;" class="angeo-spinner"></span>
+            👁 Preview after injection
+        </button>
+        <a href="<?= $block->escapeUrl($robotsUrl) ?>" target="_blank" class="angeo-btn angeo-btn-secondary">
+            ↗ Open live robots.txt
+        </a>
+    </div>
+
+    <div id="angeo-result-area"></div>
+
+    <div class="angeo-grid">
+
+        <div class="angeo-card">
+            <div class="angeo-card-header">
+                <h2>AI Crawlers</h2>
+                <span id="angeo-score-badge" class="angeo-badge" style="display:none;"></span>
+            </div>
+            <div class="angeo-card-body" style="padding:0;">
+                <table class="angeo-bot-table">
+                    <thead>
+                        <tr>
+                            <th>Bot</th>
+                            <th>Purpose</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="angeo-bot-tbody">
+                        <?php foreach ($allBots as $key => $bot):
+                            $enabled = array_key_exists($key, $enabledBots);
+                        ?>
+                        <tr data-bot="<?= $block->escapeHtml($bot['user_agent']) ?>">
+                            <td><code style="font-size:11px;"><?= $block->escapeHtml($bot['user_agent']) ?></code></td>
+                            <td style="color:#6b7280;font-size:12px;"><?= $block->escapeHtml($bot['description']) ?></td>
+                            <td>
+                                <span class="angeo-status-badge <?= $enabled ? 'pending' : 'disabled' ?>"
+                                      data-status="<?= $enabled ? 'pending' : 'disabled' ?>">
+                                    <?= $enabled ? '… not checked' : 'disabled' ?>
+                                </span>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div class="angeo-card-body" style="padding-top:0;">
+                <p class="angeo-meta">
+                    Source: <a href="<?= $block->escapeUrl($robotsUrl) ?>" target="_blank" style="color:#6b7280;"><?= $block->escapeHtml($robotsUrl) ?></a>
+                </p>
+            </div>
+        </div>
+
+        <div class="angeo-card">
+            <div class="angeo-card-header">
+                <h2>robots.txt Preview</h2>
+                <span style="font-size:11px;color:#9ca3af;">after injection</span>
+            </div>
+            <div class="angeo-card-body">
+                <pre class="angeo-pre" id="angeo-preview-content"
+                     style="color:#64748b;">Click "Preview after injection" to see the output here.</pre>
+            </div>
+        </div>
+
+    </div>
+
+    <p class="angeo-meta" style="margin-top:8px;">
+        CLI tools: <code>bin/magento angeo:robots:validate</code> &nbsp;|&nbsp;
+        <code>bin/magento angeo:robots:preview</code> &nbsp;|&nbsp;
+        <code>bin/magento angeo:robots:preview --diff</code>
+    </p>
+
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    const validateUrl = '<?= $block->escapeJs($validateUrl) ?>';
+    const previewUrl  = '<?= $block->escapeJs($previewUrl) ?>';
+    const formKey     = '<?= $block->escapeJs($formKey) ?>';
+
+    function setLoading(btnId, spinnerId, loading) {
+        const btn = document.getElementById(btnId);
+        const sp  = document.getElementById(spinnerId);
+        btn.disabled = loading;
+        sp.style.display = loading ? 'inline-block' : 'none';
+    }
+
+    function showAlert(type, message) {
+        const area = document.getElementById('angeo-result-area');
+        area.innerHTML = '<div class="angeo-alert ' + type + '">' + message + '</div>';
+        area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function clearAlert() {
+        document.getElementById('angeo-result-area').innerHTML = '';
+    }
+
+    function post(url, callback) {
+        const req = new XMLHttpRequest();
+        req.open('POST', url, true);
+        req.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        req.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        req.onreadystatechange = function () {
+            if (req.readyState === 4) {
+                try {
+                    callback(JSON.parse(req.responseText));
+                } catch (e) {
+                    callback({ success: false, error: 'Invalid response from server. Status: ' + req.status });
+                }
+            }
+        };
+        req.send('form_key=' + encodeURIComponent(formKey));
+    }
+
+    document.getElementById('angeo-btn-validate').addEventListener('click', function () {
+        clearAlert();
+        setLoading('angeo-btn-validate', 'validate-spinner', true);
+
+        post(validateUrl, function (data) {
+            setLoading('angeo-btn-validate', 'validate-spinner', false);
+
+            if (!data.success) {
+                showAlert('error', '✗ ' + (data.error || 'Validation failed.'));
+                return;
+            }
+
+            const tbody = document.getElementById('angeo-bot-tbody');
+            tbody.querySelectorAll('tr[data-bot]').forEach(function (row) {
+                const ua      = row.getAttribute('data-bot');
+                const cell    = row.querySelector('.angeo-status-badge');
+                const botData = data.bots ? data.bots.find(function (b) { return b.user_agent === ua; }) : null;
+                if (!botData) return;
+
+                if (botData.status === 'disabled') {
+                    cell.className = 'angeo-status-badge disabled';
+                    cell.textContent = 'disabled';
+                } else if (botData.status === 'pass') {
+                    cell.className = 'angeo-status-badge pass';
+                    cell.textContent = '✓ present';
+                } else {
+                    cell.className = 'angeo-status-badge fail';
+                    cell.textContent = '✗ missing';
+                }
+            });
+
+            const scoreBadge = document.getElementById('angeo-score-badge');
+            scoreBadge.style.display = 'inline-flex';
+            if (data.pass) {
+                scoreBadge.className = 'angeo-badge enabled';
+                scoreBadge.textContent = '✓ All rules present';
+            } else {
+                scoreBadge.className = 'angeo-badge disabled';
+                scoreBadge.textContent = data.missing.length + ' missing';
+            }
+
+            if (data.pass) {
+                showAlert('success', '✓ All enabled AI crawler rules are present in the live robots.txt.');
+            } else {
+                showAlert('warn',
+                    '⚠ Missing entries: <strong>' + data.missing.join(', ') + '</strong>. ' +
+                    'Save config and flush cache, then re-validate. ' +
+                    'On Adobe Commerce Cloud, also purge the Fastly CDN cache.'
+                );
+            }
+        });
+    });
+
+    document.getElementById('angeo-btn-preview').addEventListener('click', function () {
+        clearAlert();
+        setLoading('angeo-btn-preview', 'preview-spinner', true);
+
+        post(previewUrl, function (data) {
+            setLoading('angeo-btn-preview', 'preview-spinner', false);
+
+            if (!data.success) {
+                showAlert('error', '✗ ' + (data.error || 'Preview failed.'));
+                return;
+            }
+
+            const pre = document.getElementById('angeo-preview-content');
+            pre.style.color = '#e2e8f0';
+
+            let html = escapeHtml(data.preview);
+            html = html.replace(/(# Angeo AEO[^\n]*)/g, '<span style="color:#34d399;">$1</span>');
+            html = html.replace(/(# End Angeo[^\n]*)/g, '<span style="color:#34d399;">$1</span>');
+            html = html.replace(/(# [^\n]*)/g, '<span style="color:#94a3b8;">$1</span>');
+            html = html.replace(/(User-agent:)([^\n]*)/g, '<span style="color:#60a5fa;">$1</span><span style="color:#f472b6;">$2</span>');
+            html = html.replace(/(Allow:|Disallow:)([^\n]*)/g, '<span style="color:#a3e635;">$1</span><span style="color:#e2e8f0;">$2</span>');
+            pre.innerHTML = html;
+
+            if (data.missing && data.missing.length > 0) {
+                showAlert('warn',
+                    '⚠ Live robots.txt is missing: <strong>' + data.missing.join(', ') + '</strong>. ' +
+                    'The preview shows what it will look like after the module serves it.'
+                );
+            } else if (data.present && data.present.length > 0) {
+                showAlert('success', '✓ Live robots.txt already contains all enabled AI bot rules.');
+            }
+        });
+    });
+
+    function escapeHtml(str) {
+        return str.replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;');
+    }
+
+}());
+</script>

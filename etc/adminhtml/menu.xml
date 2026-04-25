@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <!-- Top-level Angeo menu (shared with other Angeo modules) -->
+        <add id="Angeo_RobotsTxtAeo::angeo_menu"
+             title="Angeo"
+             module="Angeo_RobotsTxtAeo"
+             sortOrder="100"
+             resource="Angeo_RobotsTxtAeo::dashboard"/>
+
+        <!-- Robots.txt AEO dashboard page -->
+        <add id="Angeo_RobotsTxtAeo::robots_dashboard"
+             title="Robots.txt AEO"
+             module="Angeo_RobotsTxtAeo"
+             sortOrder="10"
+             parent="Angeo_RobotsTxtAeo::angeo_menu"
+             action="angeo_robots/robots/index"
+             resource="Angeo_RobotsTxtAeo::dashboard"/>
+    </menu>
+</config>

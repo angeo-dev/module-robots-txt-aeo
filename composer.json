@@ -1,0 +1,47 @@
+{
+    "name": "angeo/module-robots-txt-aeo",
+    "description": "Magento 2 module for AI Engine Optimization (AEO). Injects AI crawler rules (OAI-SearchBot, GPTBot, PerplexityBot, Google-Extended, ClaudeBot and more) into robots.txt — without overwriting your existing configuration. Fixes the robots.txt signal in angeo/module-aeo-audit.",
+    "type": "magento2-module",
+    "license": "MIT",
+    "version": "1.0.0",
+    "authors": [
+        {
+            "name": "Ievgenii Gryshkun",
+            "homepage": "https://angeo.dev",
+            "email": "info.woop@angeo.dev"
+        }
+    ],
+    "keywords": [
+        "magento2",
+        "robots.txt",
+        "aeo",
+        "ai visibility",
+        "chatgpt",
+        "gptbot",
+        "oai-searchbot",
+        "perplexitybot",
+        "google-extended",
+        "claudebot",
+        "angeo",
+        "ai search",
+        "ai engine optimization"
+    ],
+    "homepage": "https://angeo.dev",
+    "require": {
+        "php": ">=8.2",
+        "magento/framework": "*",
+        "magento/module-config": "*",
+        "magento/module-store": "*"
+    },
+    "suggest": {
+        "angeo/module-aeo-audit": "Verify your robots.txt AEO signal after installation."
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Angeo\\RobotsTxtAeo\\": ""
+        }
+    }
+}

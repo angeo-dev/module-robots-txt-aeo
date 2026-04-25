@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <angeo_robots_txt_aeo>
+            <general>
+                <enabled>1</enabled>
+                <mode>inject</mode>
+                <custom_content></custom_content>
+            </general>
+            <bots>
+                <oai_searchbot>1</oai_searchbot>
+                <gptbot>1</gptbot>
+                <chatgpt_user>1</chatgpt_user>
+                <perplexitybot>1</perplexitybot>
+                <perplexity_user>1</perplexity_user>
+                <google_extended>1</google_extended>
+                <claudebot>1</claudebot>
+                <anthropic_ai>1</anthropic_ai>
+            </bots>
+        </angeo_robots_txt_aeo>
+    </default>
+</config>

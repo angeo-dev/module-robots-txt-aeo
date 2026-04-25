@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="angeo" translate="label" sortOrder="500">
+            <label>Angeo</label>
+        </tab>
+
+        <section id="angeo_robots_txt_aeo" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+            <label>Robots.txt AEO</label>
+            <tab>angeo</tab>
+            <resource>Angeo_RobotsTxtAeo::config</resource>
+
+            <group id="general" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>General</label>
+
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable AI Bot Rules</label>
+                    <comment>When enabled, AI crawler rules are automatically added to your robots.txt.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="mode" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Injection Mode</label>
+                    <comment><![CDATA[<strong>Inject (recommended)</strong> — adds AI bot rules at the top of your existing robots.txt, before any wildcard block. Your existing rules are preserved.<br/><strong>Replace</strong> — replaces the entire robots.txt with the AI-optimized version. Use only if you want full control via this module.]]></comment>
+                    <source_model>Angeo\RobotsTxtAeo\Model\Config\Source\Mode</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+
+                <field id="custom_content" translate="label comment" type="textarea" sortOrder="30" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Custom robots.txt Content (Replace mode)</label>
+                    <comment>Used only in Replace mode. If empty, safe Magento defaults will be applied. The Angeo AI block is always prepended automatically.</comment>
+                    <depends>
+                        <field id="enabled">1</field>
+                        <field id="mode">replace</field>
+                    </depends>
+                </field>
+            </group>
+
+            <group id="bots" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>AI Crawlers</label>
+                <comment>Select which AI crawlers to allow. Allowed bots will be added with "Allow: /" before your wildcard Disallow block.</comment>
+
+                <field id="oai_searchbot" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>OAI-SearchBot (ChatGPT live search)</label>
+                    <comment>Used by ChatGPT to retrieve live product pages when answering shopping queries.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="gptbot" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>GPTBot (OpenAI training crawler)</label>
+                    <comment>OpenAI background training crawler. Block to opt out of GPT model training.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="chatgpt_user" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>ChatGPT-User (ChatGPT browsing)</label>
+                    <comment>Used when a ChatGPT user explicitly browses a URL. Recommended: Allow.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="perplexitybot" translate="label comment" type="select" sortOrder="40" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>PerplexityBot (Perplexity index crawler)</label>
+                    <comment>Perplexity background indexer. Respects robots.txt. Allow to appear in Perplexity results.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="perplexity_user" translate="label comment" type="select" sortOrder="50" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Perplexity-User (Perplexity real-time fetch)</label>
+                    <comment>Triggered by real user queries. Note: does not respect robots.txt in practice.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="google_extended" translate="label comment" type="select" sortOrder="60" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Google-Extended (Gemini / AI Overviews)</label>
+                    <comment>Feeds Google Gemini and AI Overviews. Blocking does NOT affect Google Search rankings.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="claudebot" translate="label comment" type="select" sortOrder="70" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>ClaudeBot (Anthropic Claude)</label>
+                    <comment>Used by Claude to fetch pages for citations and answers.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="anthropic_ai" translate="label comment" type="select" sortOrder="80" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>anthropic-ai (Anthropic training crawler)</label>
+                    <comment>Anthropic background training crawler. Block to opt out of Claude model training.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+            </group>
+
+            <group id="preview" translate="label" type="text" sortOrder="30" showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>Preview &amp; Tools</label>
+                <frontend_model>Angeo\RobotsTxtAeo\Block\Adminhtml\System\Config\Preview</frontend_model>
+            </group>
+        </section>
+    </system>
+</config>

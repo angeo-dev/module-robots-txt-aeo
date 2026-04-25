@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!-- Primary injection point: intercepts Magento\Robots\Model\Robots::getData() -->
+    <type name="Magento\Robots\Model\Robots">
+        <plugin name="angeo_robots_txt_aeo_model_plugin"
+                type="Angeo\RobotsTxtAeo\Plugin\RobotsModelPlugin"/>
+    </type>
+
+    <!-- CLI commands -->
+    <type name="Magento\Framework\Console\CommandList">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="angeo_robots_txt_aeo_validate"
+                      xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\ValidateCommand</item>
+                <item name="angeo_robots_txt_aeo_preview"
+                      xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\PreviewCommand</item>
+            </argument>
+        </arguments>
+    </type>
+
+</config>
