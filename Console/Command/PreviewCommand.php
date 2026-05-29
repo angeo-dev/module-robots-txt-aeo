@@ -6,7 +6,7 @@ namespace Angeo\RobotsTxtAeo\Console\Command;
 
 use Angeo\RobotsTxtAeo\Model\Config;
 use Angeo\RobotsTxtAeo\Model\RobotsInjector;
-use Magento\Framework\App\Config\ScopeConfigInterface;
+use Angeo\RobotsTxtAeo\Model\UrlFetcher;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -21,9 +21,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 class PreviewCommand extends Command
 {
     public function __construct(
-        private readonly RobotsInjector       $injector,
-        private readonly Config               $config,
-        private readonly ScopeConfigInterface $scopeConfig
+        private readonly RobotsInjector $injector,
+        private readonly Config         $config,
+        private readonly UrlFetcher     $urlFetcher,
     ) {
         parent::__construct();
     }
@@ -32,18 +32,14 @@ class PreviewCommand extends Command
     {
         $this->setName('angeo:robots:preview')
             ->setDescription('Preview the final robots.txt output after AI rule injection (no changes made)')
-            ->addOption(
-                'url',
-                'u',
-                InputOption::VALUE_OPTIONAL,
-                'Store URL to fetch current robots.txt from (default: base URL from config)'
-            )
-            ->addOption(
-                'diff',
-                'd',
-                InputOption::VALUE_NONE,
-                'Show only the lines that will be added (diff view)'
-            );
+            ->addOption('url', 'u', InputOption::VALUE_OPTIONAL,
+                'Store URL to fetch current robots.txt from (default: base URL from store)')
+            ->addOption('store', 's', InputOption::VALUE_OPTIONAL,
+                'Store ID for multi-store installations')
+            ->addOption('insecure', null, InputOption::VALUE_NONE,
+                'Disable TLS verification (dev / self-signed certs only)')
+            ->addOption('diff', 'd', InputOption::VALUE_NONE,
+                'Show only the lines that will be added (diff view)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -52,29 +48,32 @@ class PreviewCommand extends Command
         $output->writeln('<info>Angeo Robots.txt AEO — Preview</info>');
         $output->writeln(str_repeat('─', 55));
 
-        // Resolve URL
-        $url = $input->getOption('url');
-        if (!$url) {
-            $url = rtrim(
-                (string) $this->scopeConfig->getValue('web/secure/base_url')
-                    ?: (string) $this->scopeConfig->getValue('web/unsecure/base_url'),
-                '/'
-            );
-        }
+        $storeId = $input->getOption('store') !== null ? (int) $input->getOption('store') : null;
 
-        $robotsUrl = rtrim($url, '/') . '/robots.txt';
-        $output->writeln('Source: <comment>' . $robotsUrl . '</comment>');
-        $output->writeln('Mode:   <comment>' . $this->config->getMode() . '</comment>');
+        $url = $input->getOption('url') ?: $this->urlFetcher->getRobotsUrl($storeId);
+
+        $output->writeln('Source: <comment>' . $url . '</comment>');
+        $output->writeln('Mode:   <comment>' . $this->config->getMode($storeId) . '</comment>');
+        if ($storeId !== null) {
+            $output->writeln('Store:  <comment>' . $storeId . '</comment>');
+        }
         $output->writeln('');
 
-        // Fetch current content
-        $current = @file_get_contents($robotsUrl);
-        if ($current === false) {
-            $output->writeln('<comment>Could not fetch live robots.txt — using empty string as base.</comment>');
+        $response = $this->urlFetcher->fetch(
+            $url,
+            UrlFetcher::DEFAULT_TIMEOUT,
+            UrlFetcher::DEFAULT_RETRIES,
+            (bool) $input->getOption('insecure')
+        );
+
+        if (!$response->isSuccess()) {
+            $output->writeln('<comment>Could not fetch live robots.txt (' . $response->error . ') — previewing against empty base.</comment>');
             $current = '';
+        } else {
+            $current = $response->body;
         }
 
-        $preview = $this->injector->preview($current);
+        $preview = $this->injector->preview($current, $storeId);
 
         if ($input->getOption('diff')) {
             $this->showDiff($output, $current, $preview);
@@ -107,7 +106,6 @@ class PreviewCommand extends Command
                 $output->writeln('<info>+ ' . $line . '</info>');
             }
         }
-
         foreach ($removed as $line) {
             if (trim($line) !== '') {
                 $output->writeln('<e>- ' . $line . '</e>');

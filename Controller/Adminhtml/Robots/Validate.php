@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Angeo\RobotsTxtAeo\Controller\Adminhtml\Robots;
 
+use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
 use Angeo\RobotsTxtAeo\Model\Config;
 use Angeo\RobotsTxtAeo\Model\RobotsInjector;
 use Angeo\RobotsTxtAeo\Model\UrlFetcher;
@@ -11,6 +12,7 @@ use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
 use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
+use Magento\Store\Model\StoreManagerInterface;
 
 class Validate extends Action implements HttpPostActionInterface
 {
@@ -18,10 +20,11 @@ class Validate extends Action implements HttpPostActionInterface
 
     public function __construct(
         Context $context,
-        private readonly JsonFactory    $jsonFactory,
-        private readonly RobotsInjector $injector,
-        private readonly Config         $moduleConfig,
-        private readonly UrlFetcher     $urlFetcher
+        private readonly JsonFactory           $jsonFactory,
+        private readonly RobotsInjector        $injector,
+        private readonly Config                $moduleConfig,
+        private readonly UrlFetcher            $urlFetcher,
+        private readonly StoreManagerInterface $storeManager,
     ) {
         parent::__construct($context);
     }
@@ -31,32 +34,34 @@ class Validate extends Action implements HttpPostActionInterface
         $result = $this->jsonFactory->create();
 
         try {
-            $robotsUrl = $this->urlFetcher->getBaseUrl() . '/robots.txt';
-            $content   = $this->urlFetcher->fetchUrl($robotsUrl);
+            $storeId   = $this->resolveStoreId();
+            $robotsUrl = $this->urlFetcher->getRobotsUrl($storeId);
+            $response  = $this->urlFetcher->fetch($robotsUrl);
 
-            if ($content === '') {
+            if (!$response->isSuccess()) {
                 return $result->setData([
                     'success'    => false,
-                    'error'      => 'Could not fetch ' . $robotsUrl,
+                    'error'      => 'Could not fetch ' . $robotsUrl . ': ' . $response->error,
                     'robots_url' => $robotsUrl,
                 ]);
             }
 
-            $validation  = $this->injector->validate($content);
+            $validation  = $this->injector->validate($response->body, $storeId);
             $allBots     = $this->moduleConfig->getAllBots();
-            $enabledBots = $this->moduleConfig->getEnabledBots();
+            $enabledBots = $this->moduleConfig->getEnabledBots($storeId);
 
             $botStatuses = [];
             foreach ($allBots as $key => $bot) {
-                $ua      = $bot['user_agent'];
+                /** @var BotDefinition $bot */
+                $ua      = $bot->userAgent;
                 $enabled = array_key_exists($key, $enabledBots);
                 $present = in_array($ua, $validation['present'], true);
 
                 $botStatuses[] = [
                     'key'         => $key,
                     'user_agent'  => $ua,
-                    'label'       => $bot['label'],
-                    'description' => $bot['description'],
+                    'label'       => $bot->label,
+                    'description' => $bot->description,
                     'enabled'     => $enabled,
                     'present'     => $present,
                     'status'      => !$enabled ? 'disabled' : ($present ? 'pass' : 'fail'),
@@ -82,6 +87,19 @@ class Validate extends Action implements HttpPostActionInterface
                 'success' => false,
                 'error'   => $e->getMessage(),
             ]);
+        }
+    }
+
+    private function resolveStoreId(): ?int
+    {
+        $param = $this->getRequest()->getParam('store');
+        if ($param !== null && $param !== '') {
+            return (int) $param;
+        }
+        try {
+            return (int) $this->storeManager->getDefaultStoreView()?->getId();
+        } catch (\Throwable) {
+            return null;
         }
     }
 }

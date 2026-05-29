@@ -10,6 +10,7 @@ use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
 use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
+use Magento\Store\Model\StoreManagerInterface;
 
 class Preview extends Action implements HttpPostActionInterface
 {
@@ -17,9 +18,10 @@ class Preview extends Action implements HttpPostActionInterface
 
     public function __construct(
         Context $context,
-        private readonly JsonFactory    $jsonFactory,
-        private readonly RobotsInjector $injector,
-        private readonly UrlFetcher     $urlFetcher
+        private readonly JsonFactory           $jsonFactory,
+        private readonly RobotsInjector        $injector,
+        private readonly UrlFetcher            $urlFetcher,
+        private readonly StoreManagerInterface $storeManager,
     ) {
         parent::__construct($context);
     }
@@ -29,15 +31,20 @@ class Preview extends Action implements HttpPostActionInterface
         $result = $this->jsonFactory->create();
 
         try {
-            $robotsUrl  = $this->urlFetcher->getBaseUrl() . '/robots.txt';
-            $existing   = $this->urlFetcher->fetchUrl($robotsUrl);
-            $preview    = $this->injector->preview($existing);
-            $validation = $this->injector->validate($existing);
+            $storeId = $this->resolveStoreId();
+            $url     = $this->urlFetcher->getRobotsUrl($storeId);
+
+            $response   = $this->urlFetcher->fetch($url);
+            $existing   = $response->isSuccess() ? $response->body : '';
+            $preview    = $this->injector->preview($existing, $storeId);
+            $validation = $this->injector->validate($existing, $storeId);
 
             return $result->setData([
                 'success'    => true,
                 'preview'    => $preview,
-                'source_url' => $robotsUrl,
+                'source_url' => $url,
+                'fetched'    => $response->isSuccess(),
+                'fetch_error'=> $response->isSuccess() ? '' : $response->error,
                 'present'    => $validation['present'],
                 'missing'    => $validation['missing'],
                 'existing'   => $existing,
@@ -47,6 +54,19 @@ class Preview extends Action implements HttpPostActionInterface
                 'success' => false,
                 'error'   => $e->getMessage(),
             ]);
+        }
+    }
+
+    private function resolveStoreId(): ?int
+    {
+        $param = $this->getRequest()->getParam('store');
+        if ($param !== null && $param !== '') {
+            return (int) $param;
+        }
+        try {
+            return (int) $this->storeManager->getDefaultStoreView()?->getId();
+        } catch (\Throwable) {
+            return null;
         }
     }
 }

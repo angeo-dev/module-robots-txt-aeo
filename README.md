@@ -2,17 +2,42 @@
 
 [![Packagist](https://img.shields.io/packagist/v/angeo/module-robots-txt-aeo.svg)](https://packagist.org/packages/angeo/module-robots-txt-aeo)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PHP](https://img.shields.io/badge/php-%3E%3D8.2-8892BF.svg)](https://php.net)
+[![PHP](https://img.shields.io/badge/php-8.1%20|%208.2%20|%208.3%20|%208.4-8892BF.svg)](https://php.net)
+[![Magento](https://img.shields.io/badge/magento-2.4.6%20|%202.4.7%20|%202.4.8-EE672F.svg)](https://magento.com)
 
-Injects AI crawler rules (`OAI-SearchBot`, `GPTBot`, `PerplexityBot`, `Google-Extended`, `ClaudeBot` and more) into your Magento 2 robots.txt — **without overwriting your existing configuration**.
+Injects AI crawler rules into your Magento 2 `robots.txt` — **without overwriting your existing configuration**.
+
+Bots managed out-of-the-box: `OAI-SearchBot`, `GPTBot`, `ChatGPT-User`, `PerplexityBot`, `Perplexity-User`, `Google-Extended`, `ClaudeBot`, `anthropic-ai`, `Claude-User`, `Applebot`, `cohere-ai`, `Amazonbot`, `Meta-ExternalAgent`.
 
 Fixes the **"robots.txt — AI Bot Access"** signal in [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit).
 
 ---
 
+## What's new in 2.0
+
+- **5 new built-in bots** aligned with the AEO Audit v3 catalogue: `Claude-User`, `Applebot`, `cohere-ai`, `Amazonbot`, `Meta-ExternalAgent`. An out-of-the-box install now passes the AEO Audit's `robots_txt` check.
+- **Audit-clean output** — emitted robots.txt no longer triggers syntax warnings:
+  - `Crawl-delay` suppressed on bots that ignore it (GPTBot, ClaudeBot, Google-Extended).
+  - No `Allow: /` + `Disallow: /` conflict on the same agent.
+  - Versioned UAs sanitised at the catalogue layer.
+  - Sitemap URLs upgraded to `https://` when the store base URL is HTTPS.
+- **`Api\RobotsStatusInterface`** — public read-only API for cross-module integration. Consumers like `angeo/module-aeo-audit` can wire to it and skip the HTTP round-trip.
+- **Dedicated cache type** `angeo_robots_txt_aeo` — flush in isolation from System → Cache Management.
+- **Backend validation** — `PathList` and `CrawlDelay` backend models normalise admin input on save.
+- **CSP-clean admin UI** — no inline styles, no inline scripts.
+- **i18n/en_US.csv** — admin labels are translatable.
+- **Removed runtime remote-registry feature** — bot catalogue is now release-managed only. Dynamic catalogue injection from an external endpoint was a security trade-off (anyone with the endpoint could inject UA strings into every install's robots.txt) and a half-implemented UX one (added bots had no admin checkbox). New bots ship via module releases.
+- **Removed orphan code** — the unused `RemoteRegistryUpdater` triplet from 1.x is gone.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
+---
+
 ## How it works
 
-The module intercepts the robots.txt response at render time (via plugin) and prepends a managed block of AI bot rules. **No database writes. No file-system changes.** Your existing admin config is untouched.
+The module intercepts the robots.txt response at render time via a plugin on
+`Magento\Robots\Model\Robots::getData()` and prepends a managed block of AI bot rules.
+**No database writes. No filesystem changes.** Your existing admin config is untouched.
 
 ### Inject mode (default — recommended)
 
@@ -27,22 +52,14 @@ Allow: /
 User-agent: GPTBot
 Allow: /
 
-User-agent: ChatGPT-User
-Allow: /
-
-User-agent: PerplexityBot
-Allow: /
-
-User-agent: Perplexity-User
-Allow: /
-
-User-agent: Google-Extended
-Allow: /
-
 User-agent: ClaudeBot
 Allow: /
+Disallow: /admin/
 
-User-agent: anthropic-ai
+User-agent: Claude-User
+Allow: /
+
+User-agent: Applebot
 Allow: /
 
 # End Angeo AEO block
@@ -50,6 +67,10 @@ Allow: /
 User-agent: *
 Disallow: /checkout/
 ... (your existing rules follow unchanged)
+
+# Angeo AEO — Sitemaps
+Sitemap: https://example-store.com/sitemap.xml
+# End Angeo AEO sitemaps
 ```
 
 ### Replace mode
@@ -58,119 +79,129 @@ Regenerates the full robots.txt. Preserves your custom `Disallow` rules from the
 
 ---
 
-## Important: if you manage robots.txt manually
-
-If you prefer to manage AI bot rules yourself directly in Magento admin (**Content → Design → Configuration → Edit Custom instruction of robots.txt**), you can:
-
-**Option A — Disable the module entirely:**
-```
-bin/magento module:disable Angeo_RobotsTxtAeo
-bin/magento cache:flush
-```
-
-**Option B — Keep the module but manage specific bots yourself:**
-Disable individual bots in **Stores → Configuration → Angeo → Robots.txt AEO → AI Crawlers**. The module only injects bots that are enabled in config. Bots you disable are left entirely to your manual configuration.
-
-**Option C — Use the module as-is (recommended):**
-The injected block is idempotent and clearly labeled. If you later add a bot manually to admin config, the module will detect the duplicate and skip re-injecting it.
-
----
-
 ## Installation
 
 ```bash
 composer require angeo/module-robots-txt-aeo
+bin/magento module:enable Angeo_RobotsTxtAeo
 bin/magento setup:upgrade
+bin/magento setup:di:compile
 bin/magento cache:flush
 ```
 
-**Requirements:** PHP 8.2+, Magento 2.4+. Compatible with Magento Open Source and Adobe Commerce Cloud.
+That's it. The module is enabled with sensible defaults — all 10 mainstream AI bots are allowed; the 3 lower-traffic bots (cohere-ai, Amazonbot, Meta-ExternalAgent) are catalogued but disabled by default.
 
 ---
 
 ## Configuration
 
-**Stores → Configuration → Angeo → Robots.txt AEO**
+`Stores → Configuration → Angeo → Robots.txt AEO`
 
-| Setting | Default | Description |
-|---|---|---|
-| Enable AI Bot Rules | Yes | Master on/off switch |
-| Injection Mode | Inject | Inject (prepend) or Replace (full file) |
-| OAI-SearchBot | Yes | ChatGPT live search crawler |
-| GPTBot | Yes | OpenAI training crawler |
-| ChatGPT-User | Yes | ChatGPT user-triggered browsing |
-| PerplexityBot | Yes | Perplexity background indexer |
-| Perplexity-User | Yes | Perplexity real-time fetch |
-| Google-Extended | Yes | Gemini / AI Overviews |
-| ClaudeBot | Yes | Anthropic Claude citations |
-| anthropic-ai | Yes | Anthropic training crawler |
+| Section | Purpose |
+|---|---|
+| **General** | Enable/disable, choose Inject or Replace mode |
+| **AI Crawlers** | Tick which bots to allow. Bots marked ★ are critical for AEO Audit pass |
+| **AI Crawler Path Overrides** | Per-bot `Allow:`, `Disallow:`, `Crawl-delay:` |
+| **Sitemap Directive** | Auto-detect from `Magento_Sitemap`, manual list, or none |
+| **Live Preview** | Renders the AEO block that will be injected |
+
+All settings respect store scope — multi-store installs can configure each store independently.
 
 ---
 
-## Admin Dashboard
-
-**Angeo → Robots.txt AEO** in the Magento admin menu.
-
-The dashboard provides:
-
-- **Validate live robots.txt** — fetches `yourstore.com/robots.txt` and shows pass/fail status for each enabled bot
-- **Preview after injection** — shows the full robots.txt output with syntax highlighting, without making any changes
-- Per-bot status table updated in real time via AJAX
-- Direct link to live robots.txt and Settings
-
-No CLI access required — non-technical store owners can validate and preview from the browser.
-
----
-
-## CLI commands
+## CLI
 
 ```bash
-# Preview what robots.txt will look like after injection (no changes made)
-bin/magento angeo:robots:preview
+# Render what would be emitted, without applying it
+bin/magento angeo:robots:preview [--store=N]
 
-# Preview with diff — show only lines being added
-bin/magento angeo:robots:preview --diff
-
-# Validate that AI rules are present in the live robots.txt
-bin/magento angeo:robots:validate
-
-# Validate against a specific store URL
-bin/magento angeo:robots:validate --url=https://yourstore.com
+# Fetch the live robots.txt and check enabled bot rules are present
+bin/magento angeo:robots:validate [--store=N] [--insecure]
 ```
 
----
+`validate` exits non-zero when expected bot rules are missing from the live
+file — useful in post-deploy smoke tests:
 
-## Adobe Commerce Cloud note
-
-On Adobe Commerce Cloud, `robots.txt` is served via a Fastly VCL snippet. After any configuration change:
-
-1. Save config in admin
-2. Purge the Fastly CDN cache
-3. Run `bin/magento angeo:robots:validate` to confirm the live file is updated
-
----
-
-## CI pipeline integration
-
-```bash
-# Fail the build if AI bot rules are missing
-bin/magento angeo:robots:validate || exit 1
+```yaml
+# .github/workflows/post-deploy.yml
+- run: bin/magento angeo:robots:validate
 ```
 
+For a full AEO scoring of robots.txt (critical-bot checks, syntax warnings,
+sitemap quality) install [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit).
+It reads the effective output of this module via `Api\RobotsStatusInterface` —
+no HTTP round-trip when both modules are installed.
+
 ---
 
-## The Angeo AI Visibility Suite
+## Cross-module integration (Api\RobotsStatusInterface)
 
-| Module | Purpose | Signal |
-|---|---|---|
-| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | AEO audit — detects missing signals | — |
-| [`angeo/module-robots-txt-aeo`](https://packagist.org/packages/angeo/module-robots-txt-aeo) | **This module** — AI bot access | Signal #1 |
-| [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | Generates llms.txt and llms.jsonl | Signal #2 |
-| [`angeo/module-rich-data`](https://packagist.org/packages/angeo/module-rich-data) | Product / FAQ / Org JSON-LD schema | Signal #3 |
-| [`angeo/module-openai-product-feed`](https://packagist.org/packages/angeo/module-openai-product-feed) | ACP product feed for ChatGPT Shopping | Signal #4 |
+The module exposes a public read-only API that consumer modules can wire to via
+DI. Soft-coupling pattern — consumers `interface_exists()`-check before
+declaring the dependency, so they keep working when this module is not installed.
+
+```php
+use Angeo\RobotsTxtAeo\Api\RobotsStatusInterface;
+
+class MyChecker
+{
+    public function __construct(
+        private readonly ?RobotsStatusInterface $robotsStatus = null,
+    ) {}
+
+    public function check(int $storeId): void
+    {
+        if ($this->robotsStatus !== null) {
+            // Zero-overhead — pure in-process call
+            $effective = $this->robotsStatus->getEffectiveRobotsTxt($storeId);
+            $bots      = $this->robotsStatus->getEnabledBotUserAgents($storeId);
+            // ...
+        } else {
+            // Fall back to HTTP fetch
+        }
+    }
+}
+```
+
+Used by `angeo/module-aeo-audit` v3+ when both modules are installed.
+
+---
+
+## How robots.txt manual content interacts
+
+The module's admin form (Inject mode) **does not** modify the existing Magento admin robots.txt textarea (Content → Design → Configuration → Edit Custom instruction of robots.txt). Both sources coexist:
+
+- Your custom block is preserved untouched.
+- The AEO block is prepended at render time.
+- Re-running the plugin is idempotent — the AEO block is replaced, not stacked.
+
+If you'd rather manage AI bot rules yourself, either disable the module (`bin/magento module:disable Angeo_RobotsTxtAeo`) or untick individual bots in admin.
+
+---
+
+## Compatibility
+
+| | Status |
+|---|---|
+| Magento 2.4.6 (PHP 8.1) | ✅ |
+| Magento 2.4.7 (PHP 8.2 / 8.3) | ✅ |
+| Magento 2.4.8 (PHP 8.3 / 8.4) | ✅ |
+| Magento Open Source / Commerce / Cloud | ✅ |
+| Hyvä / PWA Studio | ✅ (robots.txt is server-side) |
+| Multi-store / multi-website | ✅ |
+| `Magento_Sitemap` not installed | ✅ (soft dependency, no-op resolver) |
+| Varnish / Fastly | ⚠️ purge CDN cache after config changes |
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT. See [LICENSE](LICENSE).
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the disclosure policy.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).

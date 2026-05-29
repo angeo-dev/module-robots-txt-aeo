@@ -12,6 +12,13 @@ use Magento\Config\Block\System\Config\Form\Fieldset;
 use Magento\Framework\Data\Form\Element\AbstractElement;
 use Magento\Framework\View\Helper\Js;
 
+/**
+ * Live preview of the AEO block, embedded in the admin system config page.
+ *
+ * v2.0.0 — all inline styles moved to view/adminhtml/web/css/angeo-robots-admin.css
+ * for CSP compatibility. The CSS is loaded via the adminhtml default_head_blocks
+ * layout.
+ */
 class Preview extends Fieldset
 {
     public function __construct(
@@ -20,7 +27,7 @@ class Preview extends Fieldset
         Js                              $jsHelper,
         private readonly Config         $moduleConfig,
         private readonly RobotsInjector $injector,
-        array $data = []
+        array $data = [],
     ) {
         parent::__construct($context, $authSession, $jsHelper, $data);
     }
@@ -33,7 +40,6 @@ class Preview extends Fieldset
             return $this->renderNote('No AI bots enabled. Enable bots in the "AI Crawlers" section above.');
         }
 
-        // Reuse injector to build the preview block (single source of truth)
         $preview = $this->injector->preview('');
         $mode    = $this->moduleConfig->getMode();
 
@@ -44,14 +50,14 @@ class Preview extends Fieldset
 
         $html  = '<tr id="row_' . $element->getHtmlId() . '">';
         $html .= '<td colspan="4">';
-        $html .= '<div style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:16px 20px;margin:8px 0;">';
-        $html .= '<p style="margin:0 0 10px;font-weight:600;color:#333;">Preview — AI block that will be injected</p>';
-        $html .= '<pre style="margin:0;font-size:12px;line-height:1.8;color:#333;background:none;border:none;padding:0;">'
-            . htmlspecialchars($preview) . '</pre>';
+        $html .= '<div class="angeo-robots-preview">';
+        $html .= '<p class="angeo-robots-preview-title">Preview — AI block that will be injected</p>';
+        $html .= '<pre class="angeo-robots-preview-pre">' . htmlspecialchars($preview) . '</pre>';
         $html .= '</div>';
-        $html .= '<p style="color:#666;font-size:12px;margin:6px 0 0;">' . $note . '</p>';
-        $html .= '<p style="color:#666;font-size:12px;margin:4px 0 0;">';
-        $html .= 'CLI: <code>bin/magento angeo:robots:preview</code> &nbsp;|&nbsp; <code>bin/magento angeo:robots:validate</code>';
+        $html .= '<p class="angeo-robots-preview-note">' . $note . '</p>';
+        $html .= '<p class="angeo-robots-preview-note">';
+        $html .= 'CLI: <code>bin/magento angeo:robots:preview</code> &nbsp;|&nbsp; '
+              .  '<code>bin/magento angeo:robots:validate</code>';
         $html .= '</p>';
         $html .= '</td>';
         $html .= '</tr>';
@@ -61,6 +67,6 @@ class Preview extends Fieldset
 
     private function renderNote(string $message): string
     {
-        return '<tr><td colspan="4"><p style="color:#888;padding:8px 0;">' . $message . '</p></td></tr>';
+        return '<tr><td colspan="4"><p class="angeo-robots-preview-empty">' . $message . '</p></td></tr>';
     }
 }

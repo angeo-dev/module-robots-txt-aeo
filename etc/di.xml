@@ -2,6 +2,16 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 
+    <!-- Public API preference: consumers wire to the interface (e.g. Angeo_AeoAudit) -->
+    <preference for="Angeo\RobotsTxtAeo\Api\RobotsStatusInterface"
+                type="Angeo\RobotsTxtAeo\Model\RobotsStatus"/>
+
+    <!-- Sitemap provider: real implementation safely no-ops when
+         Magento_Sitemap is not installed (class_exists check inside).
+         Tests use NullMagentoSitemapProvider directly. -->
+    <preference for="Angeo\RobotsTxtAeo\Model\Sitemap\MagentoSitemapProviderInterface"
+                type="Angeo\RobotsTxtAeo\Model\Sitemap\MagentoSitemapProvider"/>
+
     <!-- Primary injection point: intercepts Magento\Robots\Model\Robots::getData() -->
     <type name="Magento\Robots\Model\Robots">
         <plugin name="angeo_robots_txt_aeo_model_plugin"

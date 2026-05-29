@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Cache/etc/cache.xsd">
+    <type name="angeo_robots_txt_aeo"
+          translate="label,description"
+          instance="Angeo\RobotsTxtAeo\Model\Cache\Type\RobotsTxtAeo">
+        <label>Angeo Robots.txt AEO</label>
+        <description>Bot registry catalogue.</description>
+    </type>
+</config>

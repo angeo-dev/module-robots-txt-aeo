@@ -17,7 +17,16 @@
                 <google_extended>1</google_extended>
                 <claudebot>1</claudebot>
                 <anthropic_ai>1</anthropic_ai>
+                <claude_user>1</claude_user>
+                <applebot>1</applebot>
+                <cohere_ai>0</cohere_ai>
+                <amazonbot>0</amazonbot>
+                <meta_external_agent>0</meta_external_agent>
             </bots>
+            <sitemap>
+                <mode>auto</mode>
+                <custom_urls></custom_urls>
+            </sitemap>
         </angeo_robots_txt_aeo>
     </default>
 </config>

@@ -4,94 +4,117 @@ declare(strict_types=1);
 
 namespace Angeo\RobotsTxtAeo\Model;
 
+use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
+use Angeo\RobotsTxtAeo\Model\Parser\ParsedRobotsTxt;
+use Angeo\RobotsTxtAeo\Model\Parser\RobotsTxtParser;
+use Angeo\RobotsTxtAeo\Model\Parser\UserAgentGroup;
+
 /**
  * Core injection logic for AI bot rules.
  *
- * Design principles:
- * - In INJECT mode: existing robots.txt content is fully preserved.
- *   AI bot rules are prepended ONLY if not already present.
- * - In REPLACE mode: a fresh robots.txt is generated with AI rules + custom or safe Magento defaults.
- * - Idempotent: running inject twice produces the same result as running it once.
- * - No DB writes: injection happens at response time via plugin, not stored in config.
+ * Responsibilities:
+ *   - INJECT mode: prepend a managed Angeo block, preserve existing content.
+ *   - REPLACE mode: rebuild robots.txt from scratch while keeping wildcard Disallow.
+ *   - Idempotent: running twice yields the same output as running once.
+ *   - Sitemap directives are emitted once, at the end of the file.
+ *
+ * v2.0.0 output sanitisation — produces robots.txt that the Angeo_AeoAudit
+ * v3 RobotsTxtChecker does not flag as a syntax issue:
+ *   - Crawl-delay is suppressed for bots that documentedly ignore it
+ *     (GPTBot, ClaudeBot, Google-Extended).
+ *   - When a bot has Disallow: /, the implicit Allow: / fallback is dropped
+ *     so we never emit Allow: / + Disallow: / on the same agent.
+ *   - User-agent strings are sanitised at the BotDefinition layer (versions
+ *     like "GPTBot/1.0" are stripped to "GPTBot").
+ *   - Sitemap URLs are normalised to https:// when the store's base URL is
+ *     https:// — the audit warns about http:// sitemap entries.
+ *
+ * Parsing of existing content is delegated to RobotsTxtParser — this class
+ * only orchestrates structural changes and renders output.
+ *
+ * @since 2.0.0 — replaced hand-rolled stripStandaloneBotEntries() with a
+ *                parser-driven implementation; added syntax sanitisation.
  */
 class RobotsInjector
 {
+    private const BLOCK_HEADER    = '# Angeo AEO — AI Crawler Rules';
+    private const BLOCK_FOOTER    = '# End Angeo AEO block';
+    private const BLOCK_PATTERN   = '/# Angeo AEO — AI Crawler Rules.*?# End Angeo AEO block\n?/s';
+    private const SITEMAP_HEADER  = '# Angeo AEO — Sitemaps';
+    private const SITEMAP_FOOTER  = '# End Angeo AEO sitemaps';
+    private const SITEMAP_PATTERN = '/# Angeo AEO — Sitemaps.*?# End Angeo AEO sitemaps\n?/s';
+
     public function __construct(
-        private readonly Config $config
+        private readonly Config           $config,
+        private readonly RobotsTxtParser  $parser,
+        private readonly SitemapResolver  $sitemapResolver,
+        private readonly UrlFetcher       $urlFetcher,
     ) {}
 
     /**
      * Main entry point. Called by the plugin with the current robots.txt content.
      */
-    public function process(string $existingContent): string
+    public function process(string $existingContent, ?int $storeId = null): string
     {
-        if (!$this->config->isEnabled()) {
+        if (!$this->config->isEnabled($storeId)) {
             return $existingContent;
         }
 
-        $enabledBots = $this->config->getEnabledBots();
+        $enabledBots = $this->config->getEnabledBots($storeId);
         if (empty($enabledBots)) {
             return $existingContent;
         }
 
-        if ($this->config->getMode() === Config::MODE_REPLACE) {
-            return $this->buildReplaceContent($enabledBots, $existingContent);
+        if ($this->config->getMode($storeId) === Config::MODE_REPLACE) {
+            return $this->buildReplaceContent($enabledBots, $existingContent, $storeId);
         }
 
-        return $this->buildInjectContent($enabledBots, $existingContent);
+        return $this->buildInjectContent($enabledBots, $existingContent, $storeId);
     }
 
     /**
-     * INJECT MODE
+     * INJECT mode: prepend the Angeo block, preserve everything else.
      *
-     * Prepends AI bot Allow rules to existing content.
-     * If our managed block already exists, it is updated in-place.
-     * Strips any pre-existing standalone entries for our bots to prevent duplicates.
-     *
-     * Result structure:
-     *   # Angeo AEO — AI Crawler Rules (auto-generated, do not edit this block)
-     *   User-agent: OAI-SearchBot
-     *   Allow: /
-     *   ...
-     *   # End Angeo AEO block
-     *
-     *   <existing robots.txt content>
+     * @param array<string, BotDefinition> $enabledBots
      */
-    private function buildInjectContent(array $enabledBots, string $existingContent): string
+    private function buildInjectContent(array $enabledBots, string $existingContent, ?int $storeId): string
     {
-        if ($this->hasAngeoBlock($existingContent)) {
-            return $this->updateAngeoBlock($enabledBots, $existingContent);
-        }
-
         $block   = $this->buildAngeoBlock($enabledBots);
-        $cleaned = $this->removeExistingBotEntries($enabledBots, $existingContent);
+        $cleaned = $this->stripExistingManagedBlocks($existingContent);
+        $cleaned = $this->stripStandaloneBotEntries($enabledBots, $cleaned);
 
-        return $block . "\n" . ltrim($cleaned);
+        $sitemaps      = $this->resolveSitemaps($storeId);
+        $sitemapBlock  = $this->buildSitemapBlock($sitemaps, $cleaned);
+
+        $result = $block . "\n" . ltrim($cleaned);
+        if ($sitemapBlock !== '') {
+            $result = rtrim($result, "\n") . "\n\n" . $sitemapBlock;
+        }
+        return $result;
     }
 
     /**
-     * REPLACE MODE
+     * REPLACE mode: rebuild robots.txt from scratch.
      *
-     * Generates a complete robots.txt.
-     *
-     * Priority order for the wildcard block body:
-     *   1. admin-configured custom_content (textarea field) — used as-is.
-     *   2. Disallow rules extracted from the existing live robots.txt.
-     *   3. Safe Magento defaults (fallback when nothing else is available).
+     * @param array<string, BotDefinition> $enabledBots
      */
-    private function buildReplaceContent(array $enabledBots, string $existingContent): string
+    private function buildReplaceContent(array $enabledBots, string $existingContent, ?int $storeId): string
     {
         $block = $this->buildAngeoBlock($enabledBots);
 
-        $customContent = trim($this->config->getCustomContent());
+        $customContent = trim($this->config->getCustomContent($storeId));
         if ($customContent !== '') {
-            return $block . "\n" . $customContent . "\n";
+            return $block . "\n" . $customContent . "\n" . $this->buildSitemapBlock(
+                $this->resolveSitemaps($storeId),
+                $customContent
+            );
         }
 
         $wildcard  = "\n# Default rules\n";
         $wildcard .= "User-agent: *\n";
 
-        $custom = $this->extractCustomDisallows($existingContent);
+        $parsed = $this->parser->parse($existingContent);
+        $custom = $this->parser->getWildcardDisallows($parsed);
         if (!empty($custom)) {
             foreach ($custom as $disallow) {
                 $wildcard .= "Disallow: " . $disallow . "\n";
@@ -106,132 +129,268 @@ class RobotsInjector
 
         $wildcard .= "Allow: /\n";
 
-        return $block . $wildcard;
+        $sitemapBlock = $this->buildSitemapBlock($this->resolveSitemaps($storeId), '');
+
+        $result = $block . $wildcard;
+        if ($sitemapBlock !== '') {
+            $result .= "\n" . $sitemapBlock;
+        }
+        return $result;
     }
 
     /**
-     * Build the Angeo-managed block of AI bot rules.
+     * Build the managed Angeo block with per-bot Allow/Disallow/Crawl-delay.
+     *
+     * Audit-clean output guarantees:
+     *  - No Allow: / + Disallow: / conflict on the same agent.
+     *  - No Crawl-delay on bots that documentedly ignore it.
+     *
+     * @param array<string, BotDefinition> $enabledBots
      */
     private function buildAngeoBlock(array $enabledBots): string
     {
         $lines   = [];
-        $lines[] = '# Angeo AEO — AI Crawler Rules';
+        $lines[] = self::BLOCK_HEADER;
         $lines[] = '# https://angeo.dev | module-robots-txt-aeo';
         $lines[] = '# Do not edit this block manually — manage via Stores > Config > Angeo > Robots.txt AEO';
         $lines[] = '';
 
         foreach ($enabledBots as $bot) {
-            $lines[] = 'User-agent: ' . $bot['user_agent'];
-            $lines[] = 'Allow: /';
+            $lines[] = 'User-agent: ' . $bot->userAgent;
+
+            $disallow = $bot->disallowPaths;
+            $disallowBlocksRoot = $this->pathListBlocksRoot($disallow);
+
+            // Resolve Allow paths — when explicit Disallow: / is present we
+            // intentionally omit the implicit Allow: / fallback (audit warns
+            // about Allow: / + Disallow: / on the same agent).
+            $allow = $bot->allowPaths;
+            if (empty($allow) && !$disallowBlocksRoot) {
+                $allow = ['/'];
+            } elseif ($disallowBlocksRoot) {
+                $allow = array_values(array_filter($allow, fn(string $p) => $p !== '/' && $p !== '/*'));
+            }
+
+            foreach ($allow as $path) {
+                $lines[] = 'Allow: ' . $path;
+            }
+            foreach ($disallow as $path) {
+                $lines[] = 'Disallow: ' . $path;
+            }
+
+            // Crawl-delay — emit only when set AND the bot honours it.
+            if ($bot->crawlDelay !== null && $bot->crawlDelay > 0 && !$bot->ignoresCrawlDelay()) {
+                $delay = $bot->crawlDelay == (int) $bot->crawlDelay
+                    ? (string) (int) $bot->crawlDelay
+                    : (string) $bot->crawlDelay;
+                $lines[] = 'Crawl-delay: ' . $delay;
+            }
+
             $lines[] = '';
         }
 
-        $lines[] = '# End Angeo AEO block';
+        $lines[] = self::BLOCK_FOOTER;
 
         return implode("\n", $lines) . "\n";
     }
 
     /**
-     * Check whether our managed block already exists in the content.
-     */
-    private function hasAngeoBlock(string $content): bool
-    {
-        return str_contains($content, '# Angeo AEO — AI Crawler Rules');
-    }
-
-    /**
-     * Replace the existing Angeo block with a freshly generated one.
-     * Everything outside the block is untouched.
-     */
-    private function updateAngeoBlock(array $enabledBots, string $content): string
-    {
-        $newBlock = $this->buildAngeoBlock($enabledBots);
-        $pattern  = '/# Angeo AEO — AI Crawler Rules.*?# End Angeo AEO block\n?/s';
-
-        return preg_replace($pattern, $newBlock, $content) ?? $content;
-    }
-
-    /**
-     * Remove any existing standalone User-agent entries for our bots
-     * to prevent duplicates when injecting for the first time.
+     * Resolve sitemaps for the given store, forcing https:// when the store
+     * itself is HTTPS so we never emit http:// entries the audit warns about.
      *
-     * Only removes blocks where the User-agent matches exactly one of our bots
-     * and is immediately followed by Allow: / or Disallow: /.
-     * Leaves wildcard blocks and unrelated bot blocks untouched.
+     * @return string[]
      */
-    private function removeExistingBotEntries(array $enabledBots, string $content): string
+    private function resolveSitemaps(?int $storeId): array
     {
-        foreach ($enabledBots as $bot) {
-            $ua      = preg_quote($bot['user_agent'], '/');
-            $pattern = '/^User-agent:\s*' . $ua . '\s*\n(?:Allow|Disallow):[^\n]*\n?/im';
-            $content = preg_replace($pattern, '', $content) ?? $content;
+        $base = $this->urlFetcher->getBaseUrl($storeId);
+        $baseIsHttps = stripos($base, 'https://') === 0;
+
+        $sitemaps = $this->sitemapResolver->resolve($storeId);
+        if (!$baseIsHttps) {
+            return $sitemaps;
         }
 
-        // Clean up multiple consecutive blank lines left behind
+        return array_map(static function (string $url) {
+            if (stripos($url, 'http://') === 0) {
+                return 'https://' . substr($url, 7);
+            }
+            return $url;
+        }, $sitemaps);
+    }
+
+    /**
+     * Build the Sitemap block. Returns '' if no sitemaps configured or all are
+     * already present in $existingContent (avoid duplicates).
+     *
+     * @param string[] $sitemaps
+     */
+    private function buildSitemapBlock(array $sitemaps, string $existingContent): string
+    {
+        if (empty($sitemaps)) {
+            return '';
+        }
+
+        $toEmit = [];
+        foreach ($sitemaps as $url) {
+            if (stripos($existingContent, 'Sitemap: ' . $url) === false) {
+                $toEmit[] = $url;
+            }
+        }
+
+        if (empty($toEmit)) {
+            return '';
+        }
+
+        $lines   = [];
+        $lines[] = self::SITEMAP_HEADER;
+        foreach ($toEmit as $url) {
+            $lines[] = 'Sitemap: ' . $url;
+        }
+        $lines[] = self::SITEMAP_FOOTER;
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * Remove previous Angeo-managed blocks (bot block + sitemap block) so
+     * regeneration is idempotent.
+     */
+    private function stripExistingManagedBlocks(string $content): string
+    {
+        $content = preg_replace(self::BLOCK_PATTERN,   '', $content) ?? $content;
+        $content = preg_replace(self::SITEMAP_PATTERN, '', $content) ?? $content;
         return preg_replace('/\n{3,}/', "\n\n", $content) ?? $content;
     }
 
     /**
-     * Extract Disallow paths from wildcard User-agent: * block in existing content.
-     * Used by REPLACE mode to preserve custom security rules when custom_content is not set.
+     * Remove ad-hoc User-agent groups for our bots that may have been added
+     * outside the managed block — using the parser to identify groups, then
+     * rebuilding the document.
      *
-     * @return string[]
+     * @param array<string, BotDefinition> $enabledBots
      */
-    private function extractCustomDisallows(string $content): array
+    private function stripStandaloneBotEntries(array $enabledBots, string $content): string
     {
-        $disallows  = [];
-        $inWildcard = false;
+        if (trim($content) === '') {
+            return $content;
+        }
 
-        foreach (explode("\n", $content) as $line) {
-            $line = trim($line);
+        $userAgents = [];
+        foreach ($enabledBots as $bot) {
+            $userAgents[strtolower($bot->userAgent)] = true;
+        }
 
-            if (strcasecmp($line, 'User-agent: *') === 0) {
-                $inWildcard = true;
-                continue;
-            }
+        $parsed = $this->parser->parse($content);
 
-            if ($inWildcard && str_starts_with(strtolower($line), 'user-agent:')) {
-                $inWildcard = false;
-                continue;
-            }
-
-            if ($inWildcard && str_starts_with(strtolower($line), 'disallow:')) {
-                $path = trim(substr($line, 9));
-                if ($path !== '' && $path !== '/') {
-                    $disallows[] = $path;
+        // Filter out groups whose user-agents are all owned by us. Groups that
+        // mix our UAs with foreign UAs are kept (and the foreign UAs preserved).
+        $keptGroups = [];
+        foreach ($parsed->groups as $group) {
+            $foreign = [];
+            foreach ($group->userAgents as $ua) {
+                if (!isset($userAgents[strtolower(trim($ua))])) {
+                    $foreign[] = $ua;
                 }
+            }
+            if (empty($foreign)) {
+                continue; // whole group is ours — drop it
+            }
+            $newGroup = new UserAgentGroup($foreign);
+            $newGroup->allow      = $group->allow;
+            $newGroup->disallow   = $group->disallow;
+            $newGroup->crawlDelay = $group->crawlDelay;
+            $keptGroups[] = $newGroup;
+        }
+
+        return $this->renderRobotsTxt($parsed, $keptGroups);
+    }
+
+    /**
+     * Render a ParsedRobotsTxt (with overridden group list) back to a string.
+     *
+     * @param UserAgentGroup[] $groups
+     */
+    private function renderRobotsTxt(ParsedRobotsTxt $parsed, array $groups): string
+    {
+        $lines = [];
+
+        foreach ($parsed->topComments as $comment) {
+            $lines[] = $comment;
+        }
+
+        $first = true;
+        foreach ($groups as $group) {
+            if (!$first) {
+                $lines[] = '';
+            }
+            $first = false;
+            foreach ($group->userAgents as $ua) {
+                $lines[] = 'User-agent: ' . $ua;
+            }
+            foreach ($group->allow as $path) {
+                $lines[] = 'Allow: ' . $path;
+            }
+            foreach ($group->disallow as $path) {
+                $lines[] = 'Disallow: ' . $path;
+            }
+            if ($group->crawlDelay !== null) {
+                $delay = $group->crawlDelay == (int) $group->crawlDelay
+                    ? (string) (int) $group->crawlDelay
+                    : (string) $group->crawlDelay;
+                $lines[] = 'Crawl-delay: ' . $delay;
             }
         }
 
-        return array_unique($disallows);
+        if (!empty($parsed->sitemaps)) {
+            $lines[] = '';
+            foreach ($parsed->sitemaps as $sitemap) {
+                $lines[] = 'Sitemap: ' . $sitemap;
+            }
+        }
+
+        $rendered = implode("\n", $lines);
+        if ($rendered !== '' && !str_ends_with($rendered, "\n")) {
+            $rendered .= "\n";
+        }
+        return $rendered;
     }
 
     /**
-     * Generate a preview of the final robots.txt without applying it.
-     * Used by CLI preview command and admin block.
+     * @param string[] $paths
      */
-    public function preview(string $existingContent): string
+    private function pathListBlocksRoot(array $paths): bool
     {
-        return $this->process($existingContent);
+        foreach ($paths as $path) {
+            $trimmed = trim($path);
+            if ($trimmed === '/' || $trimmed === '/*') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ─── Public API ──────────────────────────────────────────────────────────
+
+    public function preview(string $existingContent, ?int $storeId = null): string
+    {
+        return $this->process($existingContent, $storeId);
     }
 
     /**
-     * Validate that a given robots.txt content already contains all required bot entries.
+     * Check which configured bots are present in the given content.
      *
      * @return array{missing: string[], present: string[]}
      */
-    public function validate(string $content): array
+    public function validate(string $content, ?int $storeId = null): array
     {
+        $parsed = $this->parser->parse($content);
         $result = ['missing' => [], 'present' => []];
 
-        foreach ($this->config->getEnabledBots() as $bot) {
-            $ua      = $bot['user_agent'];
-            $pattern = '/^User-agent:\s*' . preg_quote($ua, '/') . '\s*$/im';
-
-            if (preg_match($pattern, $content)) {
-                $result['present'][] = $ua;
+        foreach ($this->config->getEnabledBots($storeId) as $bot) {
+            if ($this->parser->hasUserAgent($parsed, $bot->userAgent)) {
+                $result['present'][] = $bot->userAgent;
             } else {
-                $result['missing'][] = $ua;
+                $result['missing'][] = $bot->userAgent;
             }
         }
 

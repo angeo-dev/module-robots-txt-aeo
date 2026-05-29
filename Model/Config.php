@@ -4,128 +4,176 @@ declare(strict_types=1);
 
 namespace Angeo\RobotsTxtAeo\Model;
 
+use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
+use Angeo\RobotsTxtAeo\Model\Bot\BotRegistry;
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Store\Model\ScopeInterface;
 
 /**
  * Configuration reader for Angeo_RobotsTxtAeo.
  *
- * All bot definitions live here so adding a new bot in the future
- * requires only: (1) adding a row to BOTS, (2) adding a field in system.xml,
- * (3) adding a default in config.xml.
+ * All values are read at store scope so multi-store installations can have
+ * different robots.txt configurations per website / store. The admin form is
+ * declared with showInWebsite=1 to surface per-store overrides.
+ *
+ * Bot metadata lives in BotRegistry — this class only resolves the boolean
+ * enabled-state and per-bot path overrides for each known bot key.
  */
 class Config
 {
-    private const XML_PREFIX = 'angeo_robots_txt_aeo/';
+    public const XML_PREFIX = 'angeo_robots_txt_aeo/';
 
     public const MODE_INJECT  = 'inject';
     public const MODE_REPLACE = 'replace';
 
-    /**
-     * Canonical bot definitions.
-     *
-     * key         => config field id (maps to angeo_robots_txt_aeo/bots/<key>)
-     * user_agent  => exact string used in robots.txt User-agent: directive
-     * label       => human-readable name shown in CLI output
-     * description => one-line explanation of the bot's purpose
-     * respects_robots_txt => factual accuracy note, used in CLI output only
-     */
-    public const BOTS = [
-        'oai_searchbot' => [
-            'user_agent'          => 'OAI-SearchBot',
-            'label'               => 'OAI-SearchBot',
-            'description'         => 'ChatGPT live search — fetches product pages for shopping queries',
-            'respects_robots_txt' => true,
-        ],
-        'gptbot' => [
-            'user_agent'          => 'GPTBot',
-            'label'               => 'GPTBot',
-            'description'         => 'OpenAI training crawler — block to opt out of GPT model training',
-            'respects_robots_txt' => true,
-        ],
-        'chatgpt_user' => [
-            'user_agent'          => 'ChatGPT-User',
-            'label'               => 'ChatGPT-User',
-            'description'         => 'ChatGPT user-triggered browsing',
-            'respects_robots_txt' => true,
-        ],
-        'perplexitybot' => [
-            'user_agent'          => 'PerplexityBot',
-            'label'               => 'PerplexityBot',
-            'description'         => 'Perplexity background indexer — allow to appear in Perplexity results',
-            'respects_robots_txt' => true,
-        ],
-        'perplexity_user' => [
-            'user_agent'          => 'Perplexity-User',
-            'label'               => 'Perplexity-User',
-            'description'         => 'Perplexity real-time fetch (does NOT respect robots.txt in practice)',
-            'respects_robots_txt' => false,
-        ],
-        'google_extended' => [
-            'user_agent'          => 'Google-Extended',
-            'label'               => 'Google-Extended',
-            'description'         => 'Gemini / AI Overviews — does not affect Google Search rankings',
-            'respects_robots_txt' => true,
-        ],
-        'claudebot' => [
-            'user_agent'          => 'ClaudeBot',
-            'label'               => 'ClaudeBot',
-            'description'         => 'Anthropic Claude citation fetcher',
-            'respects_robots_txt' => true,
-        ],
-        'anthropic_ai' => [
-            'user_agent'          => 'anthropic-ai',
-            'label'               => 'anthropic-ai',
-            'description'         => 'Anthropic training crawler — block to opt out of Claude model training',
-            'respects_robots_txt' => true,
-        ],
-    ];
-
     public function __construct(
-        private readonly ScopeConfigInterface $scopeConfig
+        private readonly ScopeConfigInterface $scopeConfig,
+        private readonly BotRegistry          $botRegistry,
     ) {}
 
-    public function isEnabled(): bool
+    // ─── General toggles ─────────────────────────────────────────────────────
+
+    public function isEnabled(?int $storeId = null): bool
     {
-        return (bool) $this->scopeConfig->getValue(self::XML_PREFIX . 'general/enabled');
+        return $this->getBool('general/enabled', $storeId, true);
     }
 
-    public function getMode(): string
+    public function getMode(?int $storeId = null): string
     {
-        return (string) ($this->scopeConfig->getValue(self::XML_PREFIX . 'general/mode') ?? self::MODE_INJECT);
+        return $this->getString('general/mode', $storeId, self::MODE_INJECT);
     }
+
+    public function getCustomContent(?int $storeId = null): string
+    {
+        return $this->getString('general/custom_content', $storeId, '');
+    }
+
+    // ─── Bot configuration ───────────────────────────────────────────────────
 
     /**
-     * Custom robots.txt body for Replace mode.
-     * When non-empty, used as-is instead of deriving Disallow rules from the live file.
-     */
-    public function getCustomContent(): string
-    {
-        return (string) ($this->scopeConfig->getValue(self::XML_PREFIX . 'general/custom_content') ?? '');
-    }
-
-    /**
-     * Returns bot definitions that are enabled in admin config.
+     * Resolve the list of bots that are enabled in admin and ready to be injected.
      *
-     * @return array<string, array{user_agent: string, label: string, description: string, respects_robots_txt: bool}>
+     * Each returned BotDefinition has its `allowPaths`, `disallowPaths`, and
+     * `crawlDelay` resolved from per-bot config overrides (if any), falling back
+     * to the registry default.
+     *
+     * @return array<string, BotDefinition>
      */
-    public function getEnabledBots(): array
+    public function getEnabledBots(?int $storeId = null): array
     {
         $enabled = [];
-        foreach (self::BOTS as $key => $bot) {
-            if ((bool) $this->scopeConfig->getValue(self::XML_PREFIX . 'bots/' . $key)) {
-                $enabled[$key] = $bot;
+        foreach ($this->botRegistry->all() as $key => $bot) {
+            if (!$this->isBotEnabled($key, $bot, $storeId)) {
+                continue;
             }
+            $enabled[$key] = $this->resolveBotOverrides($bot, $storeId);
         }
         return $enabled;
     }
 
     /**
-     * Returns all bot definitions regardless of enabled state.
-     *
-     * @return array<string, array{user_agent: string, label: string, description: string, respects_robots_txt: bool}>
+     * @return array<string, BotDefinition>
      */
     public function getAllBots(): array
     {
-        return self::BOTS;
+        return $this->botRegistry->all();
+    }
+
+    /**
+     * @return array<string, BotDefinition>
+     */
+    public function getBuiltinBots(): array
+    {
+        return $this->botRegistry->builtins();
+    }
+
+    private function isBotEnabled(string $key, BotDefinition $bot, ?int $storeId): bool
+    {
+        $raw = $this->scopeConfig->getValue(
+            self::XML_PREFIX . 'bots/' . $key,
+            ScopeInterface::SCOPE_STORE,
+            $storeId
+        );
+
+        // For newly-shipped bots without a config row yet — use default_enabled.
+        if ($raw === null) {
+            return $bot->defaultEnabled;
+        }
+
+        return (bool) $raw;
+    }
+
+    /**
+     * Apply per-bot path overrides from store config.
+     *
+     * Config keys (all optional):
+     *   angeo_robots_txt_aeo/bot_overrides/<key>/allow      — comma/newline list
+     *   angeo_robots_txt_aeo/bot_overrides/<key>/disallow   — comma/newline list
+     *   angeo_robots_txt_aeo/bot_overrides/<key>/crawl_delay — numeric or empty
+     */
+    private function resolveBotOverrides(BotDefinition $bot, ?int $storeId): BotDefinition
+    {
+        $prefix = self::XML_PREFIX . 'bot_overrides/' . $bot->key . '/';
+
+        $allowRaw     = $this->scopeConfig->getValue($prefix . 'allow',       ScopeInterface::SCOPE_STORE, $storeId);
+        $disallowRaw  = $this->scopeConfig->getValue($prefix . 'disallow',    ScopeInterface::SCOPE_STORE, $storeId);
+        $crawlDelayRaw = $this->scopeConfig->getValue($prefix . 'crawl_delay', ScopeInterface::SCOPE_STORE, $storeId);
+
+        $allowPaths    = $this->parsePathList((string) $allowRaw,    $bot->allowPaths);
+        $disallowPaths = $this->parsePathList((string) $disallowRaw, $bot->disallowPaths);
+
+        $crawlDelay = $bot->crawlDelay;
+        if ($crawlDelayRaw !== null && $crawlDelayRaw !== '' && is_numeric($crawlDelayRaw)) {
+            $crawlDelay = (float) $crawlDelayRaw;
+        }
+
+        return new BotDefinition(
+            key:               $bot->key,
+            userAgent:         $bot->userAgent,
+            label:             $bot->label,
+            description:       $bot->description,
+            respectsRobotsTxt: $bot->respectsRobotsTxt,
+            allowPaths:        $allowPaths,
+            disallowPaths:     $disallowPaths,
+            crawlDelay:        $crawlDelay,
+            defaultEnabled:    $bot->defaultEnabled,
+            source:            $bot->source,
+        );
+    }
+
+    /**
+     * @param string[] $fallback
+     * @return string[]
+     */
+    private function parsePathList(string $raw, array $fallback): array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return $fallback;
+        }
+
+        $items = preg_split('/[\r\n,]+/', $raw) ?: [];
+        $items = array_filter(array_map('trim', $items), 'strlen');
+        return array_values(array_unique($items));
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private function getBool(string $path, ?int $storeId, bool $default): bool
+    {
+        $raw = $this->scopeConfig->getValue(self::XML_PREFIX . $path, ScopeInterface::SCOPE_STORE, $storeId);
+        if ($raw === null) {
+            return $default;
+        }
+        return (bool) $raw;
+    }
+
+    private function getString(string $path, ?int $storeId, string $default): string
+    {
+        $raw = $this->scopeConfig->getValue(self::XML_PREFIX . $path, ScopeInterface::SCOPE_STORE, $storeId);
+        if ($raw === null || $raw === '') {
+            return $default;
+        }
+        return (string) $raw;
     }
 }

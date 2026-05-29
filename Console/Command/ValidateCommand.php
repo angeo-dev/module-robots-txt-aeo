@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Angeo\RobotsTxtAeo\Console\Command;
 
+use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
 use Angeo\RobotsTxtAeo\Model\Config;
 use Angeo\RobotsTxtAeo\Model\RobotsInjector;
-use Magento\Framework\App\Config\ScopeConfigInterface;
+use Angeo\RobotsTxtAeo\Model\UrlFetcher;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -21,9 +22,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 class ValidateCommand extends Command
 {
     public function __construct(
-        private readonly RobotsInjector       $injector,
-        private readonly Config               $config,
-        private readonly ScopeConfigInterface $scopeConfig
+        private readonly RobotsInjector $injector,
+        private readonly Config         $config,
+        private readonly UrlFetcher     $urlFetcher,
     ) {
         parent::__construct();
     }
@@ -32,12 +33,12 @@ class ValidateCommand extends Command
     {
         $this->setName('angeo:robots:validate')
             ->setDescription('Validate that AI crawler rules are present in the live robots.txt')
-            ->addOption(
-                'url',
-                'u',
-                InputOption::VALUE_OPTIONAL,
-                'Store URL to fetch robots.txt from (default: base URL from config)'
-            );
+            ->addOption('url', 'u', InputOption::VALUE_OPTIONAL,
+                'Store URL to fetch robots.txt from (default: base URL from store)')
+            ->addOption('store', 's', InputOption::VALUE_OPTIONAL,
+                'Store ID for multi-store installations')
+            ->addOption('insecure', null, InputOption::VALUE_NONE,
+                'Disable TLS verification (dev / self-signed certs only)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -46,63 +47,61 @@ class ValidateCommand extends Command
         $output->writeln('<info>Angeo Robots.txt AEO — Validator</info>');
         $output->writeln(str_repeat('─', 55));
 
-        if (!$this->config->isEnabled()) {
-            $output->writeln('<comment>Module is disabled. Enable in Stores → Config → Angeo → Robots.txt AEO.</comment>');
+        $storeId = $input->getOption('store') !== null ? (int) $input->getOption('store') : null;
+
+        if (!$this->config->isEnabled($storeId)) {
+            $output->writeln('<comment>Module is disabled for this scope. Enable in Stores → Config → Angeo → Robots.txt AEO.</comment>');
             return Command::SUCCESS;
         }
 
-        // Resolve URL
-        $url = $input->getOption('url');
-        if (!$url) {
-            $url = rtrim(
-                (string) $this->scopeConfig->getValue('web/secure/base_url')
-                    ?: (string) $this->scopeConfig->getValue('web/unsecure/base_url'),
-                '/'
-            );
-        }
-
-        $robotsUrl = rtrim($url, '/') . '/robots.txt';
-        $output->writeln('Fetching: <comment>' . $robotsUrl . '</comment>');
+        $url = $input->getOption('url') ?: $this->urlFetcher->getRobotsUrl($storeId);
+        $output->writeln('Fetching: <comment>' . $url . '</comment>');
         $output->writeln('');
 
-        // Fetch robots.txt
-        $content = @file_get_contents($robotsUrl);
-        if ($content === false) {
-            $output->writeln('<error>Could not fetch robots.txt from ' . $robotsUrl . '</error>');
-            $output->writeln('Try passing --url=https://yourstore.com');
+        $response = $this->urlFetcher->fetch(
+            $url,
+            UrlFetcher::DEFAULT_TIMEOUT,
+            UrlFetcher::DEFAULT_RETRIES,
+            (bool) $input->getOption('insecure')
+        );
+
+        if (!$response->isSuccess()) {
+            $output->writeln('<error>Could not fetch robots.txt: ' . $response->error . '</error>');
+            $output->writeln('Try passing --url=https://yourstore.com or --insecure for local dev.');
             return Command::FAILURE;
         }
 
-        // Validate
-        $result  = $this->injector->validate($content);
-        $allBots = $this->config->getAllBots();
+        $result      = $this->injector->validate($response->body, $storeId);
+        $enabledBots = $this->config->getEnabledBots($storeId);
+        $allBots     = $this->config->getAllBots();
 
         $hasMissing = !empty($result['missing']);
 
         foreach ($allBots as $key => $bot) {
-            $ua      = $bot['user_agent'];
-            $enabled = in_array($ua, array_column($this->config->getEnabledBots(), 'user_agent'));
+            /** @var BotDefinition $bot */
+            $ua      = $bot->userAgent;
+            $enabled = array_key_exists($key, $enabledBots);
 
             if (!$enabled) {
                 $output->writeln(sprintf(
                     '  <comment>─ SKIP </comment> %-22s <fg=gray>%s (disabled in config)</>',
                     $ua,
-                    $bot['description']
+                    $bot->description
                 ));
                 continue;
             }
 
-            if (in_array($ua, $result['present'])) {
+            if (in_array($ua, $result['present'], true)) {
                 $output->writeln(sprintf(
                     '  <info>✓ PASS </info> %-22s <fg=gray>%s</>',
                     $ua,
-                    $bot['description']
+                    $bot->description
                 ));
             } else {
                 $output->writeln(sprintf(
                     '  <error>✗ FAIL </error> %-22s <fg=gray>%s</>',
                     $ua,
-                    $bot['description']
+                    $bot->description
                 ));
             }
         }
