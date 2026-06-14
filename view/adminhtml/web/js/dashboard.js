@@ -4,10 +4,15 @@
  * Loaded via the layout file and bound to elements by `data-*` attributes
  * passed from the PHTML. No inline event handlers, no inline scripts — CSP-clean.
  *
- * @since 2.0.0
+ * @since 2.0.1 — showAlert() builds DOM nodes via textContent instead of
+ *                concatenating server-provided strings into innerHTML. Even
+ *                though current payloads are admin-controlled, this removes
+ *                the HTML-injection sink entirely.
  */
 define(['jquery', 'mage/url'], function ($, urlBuilder) {
     'use strict';
+
+    var ALERT_TYPES = ['success', 'warn', 'error'];
 
     return function (config) {
         var validateUrl = config.validateUrl;
@@ -24,19 +29,43 @@ define(['jquery', 'mage/url'], function ($, urlBuilder) {
             sp.style.display = loading ? 'inline-block' : 'none';
         }
 
-        function showAlert(type, message) {
+        /**
+         * Render an alert without ever passing dynamic strings through
+         * innerHTML. `parts` is an array of {text: string, strong: bool};
+         * a plain string is accepted as shorthand for one non-strong part.
+         */
+        function showAlert(type, parts) {
             var area = document.getElementById('angeo-result-area');
             if (!area) {
                 return;
             }
-            area.innerHTML = '<div class="angeo-alert ' + type + '">' + message + '</div>';
+
+            if (typeof parts === 'string') {
+                parts = [{ text: parts, strong: false }];
+            }
+
+            var div = document.createElement('div');
+            div.className = 'angeo-alert ' +
+                (ALERT_TYPES.indexOf(type) !== -1 ? type : 'error');
+
+            parts.forEach(function (part) {
+                if (part.strong) {
+                    var strong = document.createElement('strong');
+                    strong.textContent = part.text;
+                    div.appendChild(strong);
+                } else {
+                    div.appendChild(document.createTextNode(part.text));
+                }
+            });
+
+            area.replaceChildren(div);
             area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function clearAlert() {
             var area = document.getElementById('angeo-result-area');
             if (area) {
-                area.innerHTML = '';
+                area.replaceChildren();
             }
         }
 
@@ -62,6 +91,11 @@ define(['jquery', 'mage/url'], function ($, urlBuilder) {
                 .replace(/"/g, '&quot;');
         }
 
+        /**
+         * Syntax-highlighted preview. The text is HTML-escaped FIRST; the
+         * regex passes below only wrap already-escaped text in styling spans,
+         * so no unescaped server content ever reaches innerHTML.
+         */
         function renderPreview(target, text) {
             var html = escapeHtml(text);
             html = html.replace(/(# Angeo AEO[^\n]*)/g, '<span class="angeo-syn-header">$1</span>');
@@ -101,7 +135,14 @@ define(['jquery', 'mage/url'], function ($, urlBuilder) {
                                 cell.textContent = 'disabled';
                             } else if (bot.status === 'pass') {
                                 cell.className = 'angeo-status-badge pass';
-                                cell.textContent = '✓ present';
+                                cell.textContent = bot.deprecated
+                                    ? '✓ present (deprecated)'
+                                    : '✓ root allowed';
+                            } else if (bot.present && bot.allowed_root === false) {
+                                // v3: present but the merged RFC 9309 rules block "/"
+                                cell.className = 'angeo-status-badge fail';
+                                cell.textContent = '✗ root blocked' +
+                                    (bot.matched_rule ? ' (' + bot.matched_rule + ')' : '');
                             } else {
                                 cell.className = 'angeo-status-badge fail';
                                 cell.textContent = '✗ missing';
@@ -121,14 +162,19 @@ define(['jquery', 'mage/url'], function ($, urlBuilder) {
                         }
                     }
 
+                    if (data.warnings && data.warnings.length > 0) {
+                        showAlert('warn', '⚠ ' + data.warnings.join(' '));
+                    }
+
                     if (data.pass) {
-                        showAlert('success', '✓ All enabled AI crawler rules are present in the live robots.txt.');
+                        showAlert('success', '✓ All enabled AI crawler rules are present and allowed at the root.');
                     } else {
-                        showAlert('warn',
-                            '⚠ Missing entries: <strong>' + (data.missing || []).join(', ') + '</strong>. ' +
-                            'Save config and flush cache, then re-validate. ' +
-                            'On Adobe Commerce Cloud, also purge the Fastly CDN cache.'
-                        );
+                        showAlert('warn', [
+                            { text: '⚠ Missing entries: ', strong: false },
+                            { text: (data.missing || []).join(', '), strong: true },
+                            { text: '. Save config and flush cache, then re-validate. ' +
+                                    'On Adobe Commerce Cloud, also purge the Fastly CDN cache.', strong: false }
+                        ]);
                     }
                 });
             });
@@ -154,10 +200,11 @@ define(['jquery', 'mage/url'], function ($, urlBuilder) {
                     }
 
                     if (data.missing && data.missing.length > 0) {
-                        showAlert('warn',
-                            '⚠ Live robots.txt is missing: <strong>' + data.missing.join(', ') + '</strong>. ' +
-                            'The preview shows what it will look like after the module serves it.'
-                        );
+                        showAlert('warn', [
+                            { text: '⚠ Live robots.txt is missing: ', strong: false },
+                            { text: data.missing.join(', '), strong: true },
+                            { text: '. The preview shows what it will look like after the module serves it.', strong: false }
+                        ]);
                     } else if (data.present && data.present.length > 0) {
                         showAlert('success', '✓ Live robots.txt already contains all enabled AI bot rules.');
                     }

@@ -27,6 +27,18 @@ class UserAgentGroup
     public ?float $crawlDelay = null;
 
     /**
+     * Raw "Name: value" directive lines inside this group that are not
+     * Allow/Disallow/Crawl-delay — e.g. Content-Usage (IETF aipref-attach),
+     * Content-Signal (Cloudflare Content Signals Policy), or future
+     * extensions. Preserved verbatim, in original order, for lossless
+     * round-trip rendering.
+     *
+     * @since 3.0.0
+     * @var string[]
+     */
+    public array $extraDirectives = [];
+
+    /**
      * @param string[] $userAgents
      */
     public function __construct(public array $userAgents) {}
@@ -50,6 +62,7 @@ class UserAgentGroup
      */
     public function isEmpty(): bool
     {
-        return empty($this->allow) && empty($this->disallow) && $this->crawlDelay === null;
+        return empty($this->allow) && empty($this->disallow)
+            && $this->crawlDelay === null && empty($this->extraDirectives);
     }
 }

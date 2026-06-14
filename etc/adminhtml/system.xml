@@ -72,6 +72,13 @@
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
 
+                <field id="oai_adsbot" translate="label comment" type="select" sortOrder="35"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>OAI-AdsBot (ChatGPT ads validation)</label>
+                    <comment>Visits only pages submitted as ChatGPT ads; data not used for training. Enable only if you advertise on ChatGPT. Off by default.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
                 <field id="perplexitybot" translate="label comment" type="select" sortOrder="40"
                        showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>PerplexityBot (Perplexity index crawler)</label>
@@ -102,8 +109,8 @@
 
                 <field id="anthropic_ai" translate="label comment" type="select" sortOrder="80"
                        showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>anthropic-ai (Anthropic training crawler)</label>
-                    <comment>Anthropic background training crawler. Block to opt out of Claude model training.</comment>
+                    <label>anthropic-ai — DEPRECATED by Anthropic</label>
+                    <comment><![CDATA[Anthropic retired the <code>Anthropic-AI</code> token in its February 2026 documentation update — <code>ClaudeBot</code> is the training crawler now. Keep disabled unless you need backwards compatibility with old rules.]]></comment>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
 
@@ -111,6 +118,13 @@
                        showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Claude-User (Claude browsing agent)</label>
                     <comment>Triggered by Claude users browsing a URL on demand.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="claude_searchbot" translate="label comment" type="select" sortOrder="95"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Claude-SearchBot (Claude search index)</label>
+                    <comment>Anthropic search-quality crawler (documented Feb 2026). Blocking it reduces your visibility and accuracy in Claude search results.</comment>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
 
@@ -147,7 +161,7 @@
             <group id="bot_overrides" translate="label comment" type="text" sortOrder="25"
                    showInDefault="1" showInWebsite="1" showInStore="1">
                 <label>AI Crawler Path Overrides</label>
-                <comment><![CDATA[Optional per-bot overrides. Leave fields empty to use the default <code>Allow: /</code>. Paths may be entered as comma- or newline-separated lists.<br/><strong>Note:</strong> GPTBot, ClaudeBot, and Google-Extended documentedly ignore <code>Crawl-delay</code> — values set for these bots are suppressed on output.]]></comment>
+                <comment><![CDATA[Optional per-bot overrides. Leave fields empty to use the default <code>Allow: /</code>. Paths may be entered as comma- or newline-separated lists.<br/><strong>Note:</strong> <code>Crawl-delay</code> is emitted only for bots with documented support (Anthropic documents support for its bots; OpenAI and Google do not) — values set for other bots are suppressed on output.]]></comment>
 
                 <group id="oai_searchbot" translate="label" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>OAI-SearchBot</label>
@@ -222,7 +236,7 @@
                 </group>
 
                 <group id="claudebot" translate="label" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>ClaudeBot (ignores Crawl-delay)</label>
+                    <label>ClaudeBot</label>
                     <field id="allow" translate="label" type="textarea" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
                         <label>Allow paths</label>
                         <backend_model>Angeo\RobotsTxtAeo\Model\Config\Backend\PathList</backend_model>
@@ -269,6 +283,77 @@
                     <depends>
                         <field id="mode">custom</field>
                     </depends>
+                </field>
+            </group>
+
+            <!-- ──────────── Content-usage signals (v3.0.0) ──────────── -->
+            <group id="content_signals" translate="label comment" type="text" sortOrder="35"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Content-Usage Signals</label>
+                <comment><![CDATA[Express how AI systems may USE your content after crawling it — separate from whether they may crawl. Both mechanisms are preference signals, not enforcement, and are <strong>off by default</strong>. Existing <code>Content-Usage</code> / <code>Content-Signal</code> / <code>License</code> lines in your robots.txt are always preserved.]]></comment>
+
+                <field id="ietf_enabled" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Emit IETF Content-Usage directive</label>
+                    <comment><![CDATA[Per IETF draft-ietf-aipref-attach (Proposed Standard track, updates RFC 9309). Adds a <code>Content-Usage:</code> line to every managed bot group.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="ietf_preference" translate="label comment" type="text" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Content-Usage preference</label>
+                    <comment><![CDATA[aipref vocabulary statement, e.g. <code>train-ai=n</code> (opt out of AI training) or <code>ai=n</code>. Single line, printable ASCII, no <code>#</code>.]]></comment>
+                    <backend_model>Angeo\RobotsTxtAeo\Model\Config\Backend\UsagePreference</backend_model>
+                    <depends><field id="ietf_enabled">1</field></depends>
+                </field>
+
+                <field id="cloudflare_enabled" translate="label comment" type="select" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Emit Cloudflare Content-Signal directive</label>
+                    <comment><![CDATA[Per the Cloudflare Content Signals Policy (contentsignals.org). Adds a <code>Content-Signal:</code> line to every managed bot group. Signals left "Unset" are omitted.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="cf_search" translate="label comment" type="select" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>search — build a search index, show links/snippets</label>
+                    <source_model>Angeo\RobotsTxtAeo\Model\Config\Source\SignalState</source_model>
+                    <depends><field id="cloudflare_enabled">1</field></depends>
+                </field>
+
+                <field id="cf_ai_train" translate="label comment" type="select" sortOrder="50"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>ai-train — train or fine-tune AI models</label>
+                    <source_model>Angeo\RobotsTxtAeo\Model\Config\Source\SignalState</source_model>
+                    <depends><field id="cloudflare_enabled">1</field></depends>
+                </field>
+
+                <field id="cf_ai_input" translate="label comment" type="select" sortOrder="60"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>ai-input — use as input to AI answers (RAG/grounding)</label>
+                    <source_model>Angeo\RobotsTxtAeo\Model\Config\Source\SignalState</source_model>
+                    <depends><field id="cloudflare_enabled">1</field></depends>
+                </field>
+            </group>
+
+            <!-- ──────────── Licensing (RSL 1.0, v3.0.0) ──────────── -->
+            <group id="licensing" translate="label comment" type="text" sortOrder="40"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Content Licensing (RSL)</label>
+                <comment><![CDATA[Really Simple Licensing 1.0 (rslstandard.org): a global <code>License:</code> directive pointing at a machine-readable RSL license file. The directive is a licensing reference, not an access control; create the license file separately. Off by default.]]></comment>
+
+                <field id="rsl_enabled" translate="label" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Emit RSL License directive</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="rsl_license_url" translate="label comment" type="text" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>RSL license file URL</label>
+                    <comment><![CDATA[Absolute <code>https://</code> URL of your RSL license XML, e.g. <code>https://example.com/license.xml</code>. May be on a different host.]]></comment>
+                    <backend_model>Angeo\RobotsTxtAeo\Model\Config\Backend\LicenseUrl</backend_model>
+                    <depends><field id="rsl_enabled">1</field></depends>
                 </field>
             </group>
 

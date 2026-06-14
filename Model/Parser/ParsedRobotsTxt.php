@@ -27,6 +27,16 @@ class ParsedRobotsTxt
     public array $unknownDirectives = [];
 
     /**
+     * Values of top-level RSL "License:" directives (rslstandard.org).
+     * Per RSL 1.0 the License directive is global — not bound to any
+     * User-agent group — so it is captured at file level.
+     *
+     * @since 3.0.0
+     * @var string[]
+     */
+    public array $licenses = [];
+
+    /**
      * Find the first group declaring the given user-agent (case-insensitive).
      */
     public function findGroup(string $userAgent): ?UserAgentGroup

@@ -22,6 +22,14 @@ namespace Angeo\RobotsTxtAeo\Model\Parser;
  * model can be re-serialized losslessly when needed.
  *
  * Reference: RFC 9309 "Robots Exclusion Protocol"
+ *
+ * @since 3.0.0 — lossless round-trip: top-level License: directives (RSL 1.0)
+ *                are captured in ParsedRobotsTxt::$licenses; unrecognised
+ *                directives inside a group (Content-Usage, Content-Signal, …)
+ *                are captured in UserAgentGroup::$extraDirectives instead of
+ *                being flattened into a top-level list. An unknown directive
+ *                following a User-agent line materialises the group, exactly
+ *                like Allow/Disallow, so group membership is preserved.
  */
 class RobotsTxtParser
 {
@@ -107,9 +115,27 @@ class RobotsTxtParser
                     }
                     break;
 
+                case 'license':
+                    // RSL 1.0: global License directive, never group-bound.
+                    if ($value !== '') {
+                        $result->licenses[] = $value;
+                    }
+                    break;
+
                 default:
-                    // Unknown directive — record but do not fail
-                    $result->unknownDirectives[] = $line;
+                    // Unrecognised directive. If we are inside (or opening) a
+                    // group, it belongs to that group (Content-Usage,
+                    // Content-Signal, …) and materialises the group the same
+                    // way Allow/Disallow do. Otherwise it is a top-level line.
+                    if ($currentGroup === null && !empty($pendingUserAgents)) {
+                        $currentGroup = new UserAgentGroup($pendingUserAgents);
+                    }
+                    if ($currentGroup !== null) {
+                        $expectingDirective = false;
+                        $currentGroup->extraDirectives[] = $directive . ': ' . $value;
+                    } else {
+                        $result->unknownDirectives[] = $line;
+                    }
                     break;
             }
         }

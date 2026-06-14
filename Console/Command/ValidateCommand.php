@@ -91,12 +91,23 @@ class ValidateCommand extends Command
                 continue;
             }
 
-            if (in_array($ua, $result['present'], true)) {
+            $effective   = $result['effective'][$ua] ?? null;
+            $allowedRoot = $effective['allowed'] ?? null;
+
+            if (in_array($ua, $result['present'], true) && $allowedRoot !== false) {
                 $output->writeln(sprintf(
                     '  <info>✓ PASS </info> %-22s <fg=gray>%s</>',
                     $ua,
                     $bot->description
                 ));
+            } elseif ($allowedRoot === false) {
+                // v3.0.0: present-but-blocked — the merged RFC 9309 rules deny "/".
+                $output->writeln(sprintf(
+                    '  <error>✗ FAIL </error> %-22s <fg=gray>root blocked by "%s"</>',
+                    $ua,
+                    (string) ($effective['matched_rule'] ?? 'unknown rule')
+                ));
+                $hasMissing = true;
             } else {
                 $output->writeln(sprintf(
                     '  <error>✗ FAIL </error> %-22s <fg=gray>%s</>',
@@ -104,6 +115,10 @@ class ValidateCommand extends Command
                     $bot->description
                 ));
             }
+        }
+
+        foreach ($result['warnings'] ?? [] as $warning) {
+            $output->writeln('  <comment>⚠ ' . $warning . '</comment>');
         }
 
         $output->writeln('');

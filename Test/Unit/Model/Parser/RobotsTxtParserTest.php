@@ -296,4 +296,52 @@ TXT;
         $this->assertSame(['ClaudeBot'], $parsed->groups[2]->userAgents);
         $this->assertSame(['/admin/'], $parsed->groups[2]->disallow);
     }
+
+    // ── v3.0.0 — lossless capture of signal / licensing directives ─────────
+
+    public function testLicenseDirectiveIsCapturedAtFileLevel(): void
+    {
+        $parsed = $this->parser->parse(
+            "License: https://example.com/license.xml\n\nUser-agent: *\nAllow: /\n"
+        );
+
+        $this->assertSame(['https://example.com/license.xml'], $parsed->licenses);
+        $this->assertCount(1, $parsed->groups);
+    }
+
+    public function testGroupScopedUnknownDirectivesGoToExtraDirectives(): void
+    {
+        $robots = "User-agent: *\n"
+                . "Content-Signal: search=yes, ai-train=no\n"
+                . "Allow: /\n"
+                . "Content-Usage: train-ai=n\n";
+
+        $parsed = $this->parser->parse($robots);
+
+        $this->assertCount(1, $parsed->groups);
+        $this->assertSame(
+            ['Content-Signal: search=yes, ai-train=no', 'Content-Usage: train-ai=n'],
+            $parsed->groups[0]->extraDirectives
+        );
+        $this->assertSame([], $parsed->unknownDirectives,
+            'group-scoped directives must not leak to file level');
+    }
+
+    public function testUnknownDirectiveAfterUserAgentMaterialisesTheGroup(): void
+    {
+        // A group consisting ONLY of a Content-Usage rule is still a group.
+        $parsed = $this->parser->parse("User-agent: ExampleBot\nContent-Usage: train-ai=y\n");
+
+        $this->assertCount(1, $parsed->groups);
+        $this->assertSame(['ExampleBot'], $parsed->groups[0]->userAgents);
+        $this->assertSame(['Content-Usage: train-ai=y'], $parsed->groups[0]->extraDirectives);
+    }
+
+    public function testTopLevelUnknownDirectiveStaysAtFileLevel(): void
+    {
+        $parsed = $this->parser->parse("X-Custom: hello\nUser-agent: *\nAllow: /\n");
+
+        $this->assertSame(['X-Custom: hello'], $parsed->unknownDirectives);
+        $this->assertSame([], $parsed->groups[0]->extraDirectives);
+    }
 }

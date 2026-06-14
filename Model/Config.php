@@ -128,16 +128,23 @@ class Config
         }
 
         return new BotDefinition(
-            key:               $bot->key,
-            userAgent:         $bot->userAgent,
-            label:             $bot->label,
-            description:       $bot->description,
-            respectsRobotsTxt: $bot->respectsRobotsTxt,
-            allowPaths:        $allowPaths,
-            disallowPaths:     $disallowPaths,
-            crawlDelay:        $crawlDelay,
-            defaultEnabled:    $bot->defaultEnabled,
-            source:            $bot->source,
+            key:                $bot->key,
+            userAgent:          $bot->userAgent,
+            label:              $bot->label,
+            description:        $bot->description,
+            respectsRobotsTxt:  $bot->respectsRobotsTxt,
+            allowPaths:         $allowPaths,
+            disallowPaths:      $disallowPaths,
+            crawlDelay:         $crawlDelay,
+            defaultEnabled:     $bot->defaultEnabled,
+            source:             $bot->source,
+            criticalForAudit:   $bot->criticalForAudit,
+            category:           $bot->category,
+            tokenOnly:          $bot->tokenOnly,
+            deprecated:         $bot->deprecated,
+            supportsCrawlDelay: $bot->supportsCrawlDelay,
+            ipRangesUrl:        $bot->ipRangesUrl,
+            docsUrl:            $bot->docsUrl,
         );
     }
 
@@ -155,6 +162,108 @@ class Config
         $items = preg_split('/[\r\n,]+/', $raw) ?: [];
         $items = array_filter(array_map('trim', $items), 'strlen');
         return array_values(array_unique($items));
+    }
+
+    // ─── Content-usage signals & licensing (v3.0.0) ─────────────────────────
+    // All three mechanisms below are OFF by default; enabling any of them is
+    // an explicit operator decision. See docs/SPECIFICATION-3.0.0.md Tier 3.
+
+    public const SIGNAL_YES   = 'yes';
+    public const SIGNAL_NO    = 'no';
+    public const SIGNAL_UNSET = 'unset';
+
+    /**
+     * IETF draft-ietf-aipref-attach: emit a group-scoped Content-Usage rule.
+     */
+    public function isIetfSignalsEnabled(?int $storeId = null): bool
+    {
+        return $this->getBool('content_signals/ietf_enabled', $storeId, false);
+    }
+
+    /**
+     * The aipref-vocab preference statement, e.g. "train-ai=n".
+     * Sanitised: single line, no '#' (would start a robots.txt comment).
+     */
+    public function getIetfPreference(?int $storeId = null): string
+    {
+        $raw = $this->getString('content_signals/ietf_preference', $storeId, 'train-ai=n');
+        $raw = str_replace(["\r", "\n", '#'], '', $raw);
+        return trim($raw);
+    }
+
+    /**
+     * Cloudflare Content Signals Policy: emit a group-scoped Content-Signal line.
+     */
+    public function isCloudflareSignalsEnabled(?int $storeId = null): bool
+    {
+        return $this->getBool('content_signals/cloudflare_enabled', $storeId, false);
+    }
+
+    /**
+     * Build the Content-Signal value, e.g. "search=yes, ai-train=no".
+     * Signals left "unset" are omitted ("no expressed preference" per the
+     * policy). Returns '' when nothing is set.
+     */
+    public function getCloudflareSignalValue(?int $storeId = null): string
+    {
+        $parts = [];
+        foreach (['search' => 'cf_search', 'ai-train' => 'cf_ai_train', 'ai-input' => 'cf_ai_input'] as $signal => $field) {
+            $value = $this->getString('content_signals/' . $field, $storeId, self::SIGNAL_UNSET);
+            if ($value === self::SIGNAL_YES || $value === self::SIGNAL_NO) {
+                $parts[] = $signal . '=' . $value;
+            }
+        }
+        return implode(', ', $parts);
+    }
+
+    /**
+     * The group-scoped signal lines to append to every managed bot group
+     * (and, in REPLACE mode, to the generated wildcard group).
+     *
+     * @return string[] e.g. ["Content-Usage: train-ai=n", "Content-Signal: search=yes, ai-train=no"]
+     */
+    public function getContentSignalLines(?int $storeId = null): array
+    {
+        $lines = [];
+
+        if ($this->isIetfSignalsEnabled($storeId)) {
+            $pref = $this->getIetfPreference($storeId);
+            if ($pref !== '') {
+                $lines[] = 'Content-Usage: ' . $pref;
+            }
+        }
+
+        if ($this->isCloudflareSignalsEnabled($storeId)) {
+            $value = $this->getCloudflareSignalValue($storeId);
+            if ($value !== '') {
+                $lines[] = 'Content-Signal: ' . $value;
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * RSL 1.0: emit a global License directive pointing at an RSL license file.
+     */
+    public function isRslEnabled(?int $storeId = null): bool
+    {
+        return $this->getBool('licensing/rsl_enabled', $storeId, false);
+    }
+
+    /**
+     * Absolute https:// URL of the RSL license file, or '' when unset/invalid.
+     */
+    public function getRslLicenseUrl(?int $storeId = null): string
+    {
+        $url = trim($this->getString('licensing/rsl_license_url', $storeId, ''));
+        if ($url === ''
+            || !filter_var($url, FILTER_VALIDATE_URL)
+            || stripos($url, 'https://') !== 0
+        ) {
+            return '';
+        }
+        return $url;
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

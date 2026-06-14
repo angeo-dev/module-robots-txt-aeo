@@ -16,8 +16,10 @@
                 <perplexity_user>1</perplexity_user>
                 <google_extended>1</google_extended>
                 <claudebot>1</claudebot>
-                <anthropic_ai>1</anthropic_ai>
+                <anthropic_ai>0</anthropic_ai>
                 <claude_user>1</claude_user>
+                <claude_searchbot>1</claude_searchbot>
+                <oai_adsbot>0</oai_adsbot>
                 <applebot>1</applebot>
                 <cohere_ai>0</cohere_ai>
                 <amazonbot>0</amazonbot>
@@ -27,6 +29,20 @@
                 <mode>auto</mode>
                 <custom_urls></custom_urls>
             </sitemap>
+            <content_signals>
+                <ietf_enabled>0</ietf_enabled>
+                <ietf_preference>train-ai=n</ietf_preference>
+                <cloudflare_enabled>0</cloudflare_enabled>
+                <!-- Defaults mirror Cloudflare's managed rollout:
+                     search=yes, ai-train=no, ai-input left unset -->
+                <cf_search>yes</cf_search>
+                <cf_ai_train>no</cf_ai_train>
+                <cf_ai_input>unset</cf_ai_input>
+            </content_signals>
+            <licensing>
+                <rsl_enabled>0</rsl_enabled>
+                <rsl_license_url></rsl_license_url>
+            </licensing>
         </angeo_robots_txt_aeo>
     </default>
 </config>

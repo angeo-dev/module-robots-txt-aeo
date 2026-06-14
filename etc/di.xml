@@ -26,6 +26,8 @@
                       xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\ValidateCommand</item>
                 <item name="angeo_robots_txt_aeo_preview"
                       xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\PreviewCommand</item>
+                <item name="angeo_robots_txt_aeo_verify_bot_ip"
+                      xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\VerifyBotIpCommand</item>
             </argument>
         </arguments>
     </type>

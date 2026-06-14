@@ -5,6 +5,108 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] — 2026-06-11
+
+Major release. Every feature is backed by primary-source verification
+(vendor crawler docs fetched directly, IETF draft-ietf-aipref-attach
+rev. 2026-04-28, RSL 1.0, RFC 9309). Full design in
+docs/SPECIFICATION-3.0.0.md. Upgrade note: default behaviour is unchanged —
+all new emission features ship disabled; the only output difference on
+upgrade is that previously-destroyed third-party directives are now
+preserved (a fix).
+
+### Fixed
+- **Data loss of third-party robots.txt directives (Tier 1).** INJECT mode
+  rebuilt the file via parse→render but the renderer never re-emitted
+  unrecognised directives — silently deleting `Content-Signal:`,
+  `Content-Usage:` and `License:` lines (Cloudflare manages Content Signals
+  on 3.8M+ domains). The parser now captures top-level `License:` lines and
+  group-scoped extra directives, and the renderer re-emits all of them;
+  injection remains idempotent.
+- **Crawl-delay metadata contradiction.** Anthropic's 2026-02 docs state
+  Crawl-delay IS supported; the hardcoded ignore-list said otherwise.
+  Replaced by per-bot tri-state `supports_crawl_delay` (emit only on
+  documented support; unknown = suppress). `BOTS_IGNORING_CRAWL_DELAY`
+  retained but @deprecated.
+
+### Added
+- **RFC 9309 evaluation engine** (`Model\Rep\RepMatcher`): group selection
+  with same-token merging and `*` fallback, longest-match-wins, Allow
+  tie-break, `*`/`$` patterns, case-sensitive paths. Validate (admin + CLI)
+  now reports per-bot *effective* access to `/` — a bot that is present but
+  blocked at the root is a failure, with the blocking rule shown.
+- **Catalogue (vendor-verified):** `Claude-SearchBot` (Anthropic, on) and
+  `OAI-AdsBot` (OpenAI ads validation, off); `anthropic-ai` marked
+  deprecated by Anthropic (default off); per-bot `category`, `token_only`
+  (Google-Extended never appears in logs), `ip_ranges_url`, `docs_url`;
+  Unicode-dash normalisation in UA sanitisation; registry cache key bumped.
+- **IETF `Content-Usage` emission** (draft-ietf-aipref-attach), off by
+  default: configurable aipref preference (default `train-ai=n`) appended to
+  every managed bot group (and the wildcard group in REPLACE mode).
+- **Cloudflare `Content-Signal` emission**, off by default: tri-state
+  search / ai-train / ai-input with defaults mirroring Cloudflare's managed
+  rollout; unset signals are omitted.
+- **RSL 1.0 `License:` directive**, off by default: global directive with an
+  https-validated URL, deduplicated against existing License lines.
+- **`angeo:robots:verify-bot-ip <ip>` CLI:** checks an address against the
+  vendor-published IP range endpoints (OpenAI, Perplexity) with IPv4/IPv6
+  CIDR matching, to detect UA spoofing.
+- Public API: `RobotsStatusInterface::getEffectiveAccess()` and
+  `::getContentSignalLines()` (@since 3.0.0).
+- Tests: RepMatcherTest (RFC 9309 normative cases), CidrMatcherTest, parser
+  round-trip tests, BotDefinition metadata tests.
+
+### Changed
+- `BotDefinition` constructor gains optional metadata parameters;
+  `Config::resolveBotOverrides()` carries all metadata through (2.x dropped
+  `criticalForAudit` on override resolution).
+- Crawl-delay is now emitted **only** for bots with documented support —
+  stores that configured a delay for e.g. Applebot will no longer see it in
+  output (previously emitted; vendor support undocumented).
+
+## [2.0.1] — 2026-06-11
+
+Security-hardening release. No functional or configuration changes — drop-in
+upgrade from 2.0.0.
+
+### Security
+- **`UrlFetcher` SSRF hardening.** libcurl's `CURLOPT_FOLLOWLOCATION` is now
+  disabled; redirects are followed manually (max 3 hops) and every hop is
+  validated: target scheme must be `http`/`https`, target host must equal the
+  original host (a leading `www.` is the only tolerated difference), and
+  `https://` → `http://` downgrades are refused. A redirect violating the
+  policy fails the fetch immediately, is logged, and is never retried.
+  Previously an open redirect (or compromised upstream) on the store's own
+  `robots.txt` could steer the admin Validate/Preview fetch — and its response
+  body — to an arbitrary internal host.
+- **Outbound URLs restricted to `http`/`https`** at both the validation layer
+  (scheme allow-list before any network activity) and the transport layer
+  (`CURLOPT_PROTOCOLS = CURLPROTO_HTTP | CURLPROTO_HTTPS`).
+- **`store` request parameter is now validated.** New
+  `Model\Adminhtml\StoreIdResolver` accepts only digit-strings and verifies
+  the store exists via `StoreRepositoryInterface` before use. Previously the
+  Preview/Validate controllers blind-cast the raw parameter to `int`,
+  allowing probing of arbitrary store IDs.
+- **No raw exception leakage from admin AJAX endpoints.** Unexpected
+  exceptions in the Preview/Validate controllers are now logged server-side
+  and a generic message is returned; only intentional `LocalizedException`
+  messages reach the client.
+- **`dashboard.js` no longer concatenates server-provided strings into
+  `innerHTML`.** `showAlert()` builds DOM nodes via `textContent` /
+  `createTextNode`, removing the HTML-injection sink entirely (previously
+  reachable only with admin-controlled payloads, i.e. self-XSS class — fixed
+  on defense-in-depth grounds).
+
+### Added
+- Unit tests for the redirect policy, scheme allow-list, and retry semantics
+  (`UrlFetcherTest`) and for the new `StoreIdResolver`
+  (`Test/Unit/Model/Adminhtml/StoreIdResolverTest`).
+
+### Changed
+- Retry semantics clarified: HTTP 5xx and network errors are retried with
+  backoff; HTTP 4xx, redirect-policy violations, and redirect loops fail
+  deterministically without retries (4xx behaviour unchanged from 2.0.0).
+
 ## [2.0.0] — 2026-05-29
 
 ### Added

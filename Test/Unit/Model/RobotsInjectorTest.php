@@ -7,6 +7,7 @@ namespace Angeo\RobotsTxtAeo\Test\Unit\Model;
 use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
 use Angeo\RobotsTxtAeo\Model\Config;
 use Angeo\RobotsTxtAeo\Model\Parser\RobotsTxtParser;
+use Angeo\RobotsTxtAeo\Model\Rep\RepMatcher;
 use Angeo\RobotsTxtAeo\Model\RobotsInjector;
 use Angeo\RobotsTxtAeo\Model\SitemapResolver;
 use Angeo\RobotsTxtAeo\Model\UrlFetcher;
@@ -32,6 +33,7 @@ class RobotsInjectorTest extends TestCase
             $this->parser,
             $this->sitemapResolver,
             $this->urlFetcher,
+            new RepMatcher(),
         );
 
         $this->sitemapResolver->method('resolve')->willReturn([]);
@@ -246,7 +248,7 @@ TXT;
             'https://example.com/sitemap.xml',
             'https://example.com/sitemap-products.xml',
         ]);
-        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver);
+        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver, $this->urlFetcher, new RepMatcher());
 
         $result = $injector->process("User-agent: *\nDisallow: /checkout/\n");
 
@@ -264,7 +266,7 @@ TXT;
 
         $sitemapResolver = $this->createMock(SitemapResolver::class);
         $sitemapResolver->method('resolve')->willReturn(['https://example.com/sitemap.xml']);
-        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver);
+        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver, $this->urlFetcher, new RepMatcher());
 
         $existing = "Sitemap: https://example.com/sitemap.xml\nUser-agent: *\nDisallow: /\n";
         $result   = $injector->process($existing);
@@ -280,7 +282,7 @@ TXT;
 
         $sitemapResolver = $this->createMock(SitemapResolver::class);
         $sitemapResolver->method('resolve')->willReturn(['https://example.com/sitemap.xml']);
-        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver);
+        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver, $this->urlFetcher, new RepMatcher());
 
         $first  = $injector->process("User-agent: *\nDisallow: /\n");
         $second = $injector->process($first);
@@ -487,6 +489,7 @@ TXT;
             $this->parser,
             $this->sitemapResolver,
             $this->urlFetcher,
+            new RepMatcher(),
         );
 
         $this->configureInjectMode($this->sampleBots());
@@ -511,6 +514,7 @@ TXT;
             $this->parser,
             $this->sitemapResolver,
             $this->urlFetcher,
+            new RepMatcher(),
         );
 
         $this->configureInjectMode($this->sampleBots());

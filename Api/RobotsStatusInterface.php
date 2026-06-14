@@ -55,4 +55,24 @@ interface RobotsStatusInterface
      * Effective mode for the given scope: "inject" or "replace".
      */
     public function getMode(?int $storeId = null): string;
+
+    /**
+     * RFC 9309 effective access decision for "/" per enabled bot, evaluated
+     * against the module's own effective output.
+     *
+     * @since 3.0.0
+     * @return array<string, array{allowed: bool, source: string, matched_rule: string|null}>
+     *         keyed by user-agent token
+     */
+    public function getEffectiveAccess(?int $storeId = null): array;
+
+    /**
+     * The group-scoped content-usage signal lines this module would emit
+     * (IETF Content-Usage and/or Cloudflare Content-Signal), empty when the
+     * feature is disabled.
+     *
+     * @since 3.0.0
+     * @return string[]
+     */
+    public function getContentSignalLines(?int $storeId = null): array;
 }

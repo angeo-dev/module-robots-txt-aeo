@@ -7,6 +7,8 @@ namespace Angeo\RobotsTxtAeo\Test\Unit\Model;
 use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
 use Angeo\RobotsTxtAeo\Model\Config;
 use Angeo\RobotsTxtAeo\Model\RobotsInjector;
+use Angeo\RobotsTxtAeo\Model\Parser\RobotsTxtParser;
+use Angeo\RobotsTxtAeo\Model\Rep\RepMatcher;
 use Angeo\RobotsTxtAeo\Model\RobotsStatus;
 use Angeo\RobotsTxtAeo\Model\SitemapResolver;
 use Angeo\RobotsTxtAeo\Model\UrlFetcher;
@@ -38,6 +40,8 @@ class RobotsStatusTest extends TestCase
             $this->sitemapResolver,
             $this->urlFetcher,
             $this->storeManager,
+            new RobotsTxtParser(),
+            new RepMatcher(),
         );
     }
 

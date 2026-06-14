@@ -3,7 +3,7 @@
     "description": "Magento 2 module for AI Engine Optimization (AEO). Injects AI crawler rules (OAI-SearchBot, GPTBot, ChatGPT-User, PerplexityBot, Perplexity-User, Google-Extended, ClaudeBot, anthropic-ai, Claude-User, Applebot, cohere-ai, Amazonbot, Meta-ExternalAgent) into robots.txt — without overwriting your existing configuration. Supports per-bot Allow/Disallow lists, Crawl-delay, Sitemap directives, multi-store, and a public Api\\RobotsStatusInterface for cross-module integration with angeo/module-aeo-audit.",
     "type": "magento2-module",
     "license": "MIT",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "authors": [
         {
             "name": "Ievgenii Gryshkun",

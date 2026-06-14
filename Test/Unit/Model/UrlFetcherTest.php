@@ -235,4 +235,163 @@ class UrlFetcherTest extends TestCase
         $this->assertSame(25, $capturedOptions[CURLOPT_TIMEOUT]);
         $this->assertSame(5,  $capturedOptions[CURLOPT_CONNECTTIMEOUT]);
     }
+
+    // ── v2.0.1 — scheme allow-list ─────────────────────────────────────────
+
+    public function testFetchRejectsNonHttpScheme(): void
+    {
+        $this->curlFactory->expects($this->never())->method('create');
+
+        $result = $this->fetcher->fetch('ftp://example.com/robots.txt');
+
+        $this->assertFalse($result->isSuccess());
+        $this->assertStringContainsString('not allowed', $result->error);
+    }
+
+    // ── v2.0.1 — manual redirect handling ─────────────────────────────────
+
+    public function testFetchFollowsSameHostRedirect(): void
+    {
+        $first = $this->createMock(Curl::class);
+        $first->expects($this->once())->method('get')->with('http://example.com/robots.txt');
+        $first->method('getStatus')->willReturn(301);
+        $first->method('getHeaders')->willReturn(['Location' => 'https://example.com/robots.txt']);
+        $first->method('getBody')->willReturn('');
+
+        $second = $this->createMock(Curl::class);
+        $second->expects($this->once())->method('get')->with('https://example.com/robots.txt');
+        $second->method('getStatus')->willReturn(200);
+        $second->method('getBody')->willReturn("User-agent: *\n");
+
+        $this->curlFactory->expects($this->exactly(2))->method('create')
+            ->willReturnOnConsecutiveCalls($first, $second);
+
+        $result = $this->fetcher->fetch('http://example.com/robots.txt');
+
+        $this->assertTrue($result->isSuccess());
+        $this->assertStringContainsString('User-agent', $result->body);
+    }
+
+    public function testFetchFollowsWwwVariantRedirect(): void
+    {
+        $first = $this->createMock(Curl::class);
+        $first->method('getStatus')->willReturn(301);
+        $first->method('getHeaders')->willReturn(['location' => 'https://www.example.com/robots.txt']);
+        $first->method('getBody')->willReturn('');
+
+        $second = $this->createMock(Curl::class);
+        $second->method('getStatus')->willReturn(200);
+        $second->method('getBody')->willReturn('ok');
+
+        $this->curlFactory->expects($this->exactly(2))->method('create')
+            ->willReturnOnConsecutiveCalls($first, $second);
+
+        $result = $this->fetcher->fetch('https://example.com/robots.txt');
+
+        $this->assertTrue($result->isSuccess());
+    }
+
+    public function testFetchBlocksCrossHostRedirect(): void
+    {
+        $curl = $this->createMock(Curl::class);
+        $curl->method('getStatus')->willReturn(302);
+        $curl->method('getHeaders')->willReturn(['Location' => 'http://169.254.169.254/latest/meta-data/']);
+        $curl->method('getBody')->willReturn('');
+
+        // No retry — redirect-policy violation is deterministic.
+        $this->curlFactory->expects($this->once())->method('create')->willReturn($curl);
+
+        $result = $this->fetcher->fetch('https://example.com/robots.txt', 5, 3);
+
+        $this->assertFalse($result->isSuccess());
+        $this->assertStringContainsString('Blocked', str_replace('blocked', 'Blocked', $result->error));
+    }
+
+    public function testFetchBlocksHttpsToHttpDowngradeRedirect(): void
+    {
+        $curl = $this->createMock(Curl::class);
+        $curl->method('getStatus')->willReturn(301);
+        $curl->method('getHeaders')->willReturn(['Location' => 'http://example.com/robots.txt']);
+        $curl->method('getBody')->willReturn('');
+
+        $this->curlFactory->expects($this->once())->method('create')->willReturn($curl);
+
+        $result = $this->fetcher->fetch('https://example.com/robots.txt');
+
+        $this->assertFalse($result->isSuccess());
+    }
+
+    public function testFetchResolvesRelativeRedirect(): void
+    {
+        $first = $this->createMock(Curl::class);
+        $first->method('getStatus')->willReturn(302);
+        $first->method('getHeaders')->willReturn(['Location' => '/robots.txt']);
+        $first->method('getBody')->willReturn('');
+
+        $second = $this->createMock(Curl::class);
+        $second->expects($this->once())->method('get')->with('https://example.com/robots.txt');
+        $second->method('getStatus')->willReturn(200);
+        $second->method('getBody')->willReturn('ok');
+
+        $this->curlFactory->expects($this->exactly(2))->method('create')
+            ->willReturnOnConsecutiveCalls($first, $second);
+
+        $result = $this->fetcher->fetch('https://example.com/');
+
+        $this->assertTrue($result->isSuccess());
+    }
+
+    public function testFetchFailsOnRedirectWithoutLocation(): void
+    {
+        $curl = $this->createMock(Curl::class);
+        $curl->method('getStatus')->willReturn(301);
+        $curl->method('getHeaders')->willReturn([]);
+        $curl->method('getBody')->willReturn('');
+
+        $this->curlFactory->expects($this->once())->method('create')->willReturn($curl);
+
+        $result = $this->fetcher->fetch('https://example.com/robots.txt');
+
+        $this->assertFalse($result->isSuccess());
+        $this->assertStringContainsString('without Location', $result->error);
+    }
+
+    public function testFetchFailsOnTooManyRedirects(): void
+    {
+        // MAX_REDIRECTS = 3 -> 4 requests then failure, no retries.
+        $makeRedirect = function () {
+            $curl = $this->createMock(Curl::class);
+            $curl->method('getStatus')->willReturn(301);
+            $curl->method('getHeaders')->willReturn(['Location' => 'https://example.com/robots.txt']);
+            $curl->method('getBody')->willReturn('');
+            return $curl;
+        };
+
+        $this->curlFactory->expects($this->exactly(UrlFetcher::MAX_REDIRECTS + 1))
+            ->method('create')
+            ->willReturnCallback($makeRedirect);
+
+        $result = $this->fetcher->fetch('https://example.com/robots.txt');
+
+        $this->assertFalse($result->isSuccess());
+        $this->assertStringContainsString('Too many redirects', $result->error);
+    }
+
+    public function testFetchDisablesCurlFollowLocation(): void
+    {
+        $capturedOptions = null;
+        $curl = $this->createMock(Curl::class);
+        $curl->method('setOptions')->willReturnCallback(function ($opts) use (&$capturedOptions) {
+            $capturedOptions = $opts;
+        });
+        $curl->method('getStatus')->willReturn(200);
+        $curl->method('getBody')->willReturn('');
+
+        $this->curlFactory->method('create')->willReturn($curl);
+
+        $this->fetcher->fetch('https://example.com/robots.txt');
+
+        $this->assertFalse($capturedOptions[CURLOPT_FOLLOWLOCATION]);
+        $this->assertSame(CURLPROTO_HTTP | CURLPROTO_HTTPS, $capturedOptions[CURLOPT_PROTOCOLS]);
+    }
 }

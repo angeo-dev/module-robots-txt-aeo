@@ -20,7 +20,9 @@ plan within 7 days for confirmed issues.
 
 | Version | Supported |
 |---------|-----------|
-| 1.1.x   | ✅ Yes    |
+| 3.0.x   | ✅ Yes    |
+| 2.0.x   | ⚠️ Critical fixes only until 2027-06-01 |
+| 1.1.x   | ⚠️ Critical fixes only until 2026-12-01 |
 | 1.0.x   | ⚠️ Critical fixes only until 2026-10-01 |
 | < 1.0   | ❌ No     |
 
@@ -31,7 +33,13 @@ This module:
 - Reads from `ScopeConfig` (admin-controlled values).
 - Writes the response body of `Magento\Robots\Model\Robots::getData()` via a plugin.
 - Performs HTTP GET requests against `/robots.txt` on the store's own base URL
-  (admin Validate action and CLI `angeo:robots:validate` only).
+  (admin Validate/Preview actions and CLI `angeo:robots:validate` /
+  `angeo:robots:preview` only). Since 2.0.1 these requests:
+  - accept `http`/`https` URLs only (scheme allow-list +
+    `CURLOPT_PROTOCOLS`),
+  - never follow redirects blindly — each hop is validated to stay on the
+    original host (modulo a leading `www.`) with no HTTPS→HTTP downgrade,
+    max 3 hops.
 - Does **not** write to the database.
 - Does **not** write to the filesystem.
 - Does **not** accept input from frontend visitors.

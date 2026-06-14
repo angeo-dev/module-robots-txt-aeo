@@ -6,6 +6,8 @@ namespace Angeo\RobotsTxtAeo\Model;
 
 use Angeo\RobotsTxtAeo\Api\RobotsStatusInterface;
 use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
+use Angeo\RobotsTxtAeo\Model\Parser\RobotsTxtParser;
+use Angeo\RobotsTxtAeo\Model\Rep\RepMatcher;
 use Magento\Store\Model\StoreManagerInterface;
 
 /**
@@ -25,6 +27,8 @@ class RobotsStatus implements RobotsStatusInterface
         private readonly SitemapResolver       $sitemapResolver,
         private readonly UrlFetcher            $urlFetcher,
         private readonly StoreManagerInterface $storeManager,
+        private readonly RobotsTxtParser       $parser,
+        private readonly RepMatcher            $repMatcher,
     ) {}
 
     public function getEffectiveRobotsTxt(?int $storeId = null): string
@@ -70,6 +74,33 @@ class RobotsStatus implements RobotsStatusInterface
     public function getMode(?int $storeId = null): string
     {
         return $this->config->getMode($this->resolveStoreId($storeId));
+    }
+
+    /**
+     * @inheritDoc
+     * @since 3.0.0
+     */
+    public function getEffectiveAccess(?int $storeId = null): array
+    {
+        $storeId = $this->resolveStoreId($storeId);
+        $parsed  = $this->parser->parse($this->injector->preview('', $storeId));
+
+        $result = [];
+        foreach ($this->config->getEnabledBots($storeId) as $bot) {
+            $result[$bot->userAgent] = $this->repMatcher
+                ->isAllowed($parsed, $bot->userAgent, '/')
+                ->toArray();
+        }
+        return $result;
+    }
+
+    /**
+     * @inheritDoc
+     * @since 3.0.0
+     */
+    public function getContentSignalLines(?int $storeId = null): array
+    {
+        return $this->config->getContentSignalLines($this->resolveStoreId($storeId));
     }
 
     private function resolveStoreId(?int $storeId): ?int
