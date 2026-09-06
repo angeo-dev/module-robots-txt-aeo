@@ -1,9 +1,9 @@
 {
     "name": "angeo/module-robots-txt-aeo",
-    "description": "Magento 2 module for AI Engine Optimization (AEO). Injects AI crawler rules (OAI-SearchBot, GPTBot, ChatGPT-User, PerplexityBot, Perplexity-User, Google-Extended, ClaudeBot, anthropic-ai, Claude-User, Applebot, cohere-ai, Amazonbot, Meta-ExternalAgent) into robots.txt — without overwriting your existing configuration. Supports per-bot Allow/Disallow lists, Crawl-delay, Sitemap directives, multi-store, and a public Api\\RobotsStatusInterface for cross-module integration with angeo/module-aeo-audit.",
+    "description": "Magento 2 module for AI Engine Optimization (AEO). Manages AI crawler rules in robots.txt (OAI-SearchBot, GPTBot, ChatGPT-User, PerplexityBot, Google-Extended, ClaudeBot, Claude-SearchBot, Applebot-Extended, CCBot and more) without overwriting your existing configuration, emits IETF Content-Usage, Cloudflare Content-Signal and RSL License directives, and verifies that a crawler is genuine via Web Bot Auth request signatures (RFC 9421) or vendor-published IP ranges.",
     "type": "magento2-module",
     "license": "MIT",
-    "version": "3.0.0",
+    "version": "4.0.0",
     "authors": [
         {
             "name": "Ievgenii Gryshkun",
@@ -33,11 +33,19 @@
         "meta-externalagent",
         "angeo",
         "ai search",
-        "ai crawlers"
+        "ai crawlers",
+        "web bot auth",
+        "rfc 9421",
+        "bot verification",
+        "content signals",
+        "rsl",
+        "aeo audit"
     ],
     "homepage": "https://angeo.dev",
     "require": {
-        "php": "~8.1.0||~8.2.0||~8.3.0||~8.4.0",
+        "php": "~8.2.0||~8.3.0||~8.4.0||~8.5.0",
+        "ext-json": "*",
+        "ext-sodium": "*",
         "magento/framework": "^103.0",
         "magento/module-config": "^101.2",
         "magento/module-store": "^101.1",
@@ -45,11 +53,11 @@
         "magento/module-robots": "^101.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^10.0",
+        "phpunit/phpunit": "^10.0||^11.0",
         "magento/magento-coding-standard": "^33.0"
     },
     "suggest": {
-        "angeo/module-aeo-audit": "Verify your robots.txt AEO signal after installation. v3+ integrates via Angeo\\RobotsTxtAeo\\Api\\RobotsStatusInterface for zero-overhead validation.",
+        "angeo/module-aeo-audit": "Verify your robots.txt AEO signal after installation. Integrates via Angeo\\\\RobotsTxtAeo\\\\Api\\\\RobotsStatusInterface and, since 4.0.0, Api\\\\BotVerificationInterface.",
         "magento/module-sitemap": "Enables auto-detection of Sitemap URLs from the Magento Sitemap module."
     },
     "autoload": {

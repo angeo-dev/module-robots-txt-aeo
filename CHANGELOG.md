@@ -5,6 +5,131 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] — 2026-09-05
+
+Major release. Two themes: robots.txt is a request, so this version adds the
+rails that actually carry proof (Web Bot Auth signatures and vendor IP ranges);
+and the file the module writes is a public asset, so every value is now
+sanitised at render time and the operator's own content is never reformatted.
+
+Upgrade note: defaults are unchanged for existing installs except one — content
+signals, when enabled, are now written to the wildcard group instead of being
+repeated in every managed bot group. Set `content_signals/placement` to
+`per_bot` to keep the 3.x layout. New bots all ship disabled.
+
+### Security
+
+- **Site-wide `Disallow: /` was silently removed in REPLACE mode (high).**
+  `getWildcardDisallows()` filtered out `/` while collecting existing wildcard
+  rules, so a robots.txt that closed the entire site — staging, pre-launch, a
+  shop under embargo — was rebuilt into a crawlable one with `Allow: /`. REPLACE
+  mode now detects this and returns the file unchanged; `validate()` and the
+  dashboard explain why. `CustomContent` refuses to save the same shape.
+- **Output-time sanitisation (medium).** Config values can reach `ScopeConfig`
+  without ever passing a backend model — a direct DB write, `app/etc/config.php`,
+  an env override. A CR/LF in a stored path could forge directives in a public
+  file (`Allow: /\nDisallow: /`). `RobotsLineSanitizer` now cleans every emitted
+  value, token, preserved line and free-text block, with length and line caps.
+  The REPLACE-mode custom content field gained a backend model
+  (`Model\Config\Backend\CustomContent`); it had none before.
+- **SSRF: address validation and pinning (medium).** `UrlFetcher` validated the
+  scheme and the redirect host but never the resolved address. It now resolves
+  each hop through `Model\Http\IpGuard` and refuses loopback, RFC 1918,
+  link-local (including `169.254.169.254`), CGNAT, multicast and reserved space,
+  IPv6 and IPv4-mapped forms included. The validated address is pinned with
+  `CURLOPT_RESOLVE`, closing the DNS-rebinding window between check and connect.
+- **Response size cap (medium).** Fetches are capped at 1 MiB
+  (`CURLOPT_MAXFILESIZE` plus truncation, since the option only fires when the
+  upstream declares `Content-Length`), and the parser stops after 50,000 lines.
+- **ReDoS in the RFC 9309 matcher (medium).** Robots.txt patterns are untrusted
+  input; `/a*a*a*…b` compiled to a backtracking regex. Wildcard runs are
+  collapsed, over-long and wildcard-heavy patterns are refused, a literal-prefix
+  pre-filter runs first, the match executes under an explicit backtrack limit,
+  and a PCRE failure is treated as "no match" rather than as a match.
+- `SECURITY.md` threat model corrected: it claimed the module fetches no
+  external URL, which stopped being true in 3.0.0 when `verify-bot-ip` started
+  calling vendor endpoints.
+- Admin JSON init hardened with `JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT`.
+- System-config preview escapes through the framework `Escaper` instead of a
+  bare `htmlspecialchars()` call.
+
+### Added
+
+- **Bot verification layer.** `Api\BotVerificationInterface` with two rails
+  behind one contract:
+  - `Model\Verify\WebBotAuthVerifier` — RFC 9421 HTTP Message Signatures with
+    in-band key discovery (`Signature-Agent`, JWKS at
+    `/.well-known/http-message-signatures-directory`), Ed25519 via ext-sodium,
+    key sets cached for 24 h. The signing origin is only ever taken from the
+    catalogue or from operator configuration, never from the header being
+    checked — otherwise the verifier would be an SSRF primitive and an attacker
+    could "prove" anything with their own key.
+  - `Model\Verify\IpRangeVerifier` — the 3.0.0 IP-range check, extracted from
+    the CLI command so the API and the audit module share it.
+  - States are `verified` / `failed` / `unknown` / `unsupported`: "the key
+    directory timed out" is not the same claim as "this request is forged".
+- `bin/magento angeo:robots:verify-bot-request` — verify a captured request
+  from a header dump or `--header` options.
+- `angeo:robots:verify-bot-ip` gained `--bot` and now reports per-rail detail.
+- **Catalogue.** `Applebot-Extended` (the token that actually governs Apple
+  model training — the module previously shipped only `Applebot`),
+  `meta-externalfetcher`, `CCBot`, `Bytespider`, `MistralAI-User`,
+  `DuckAssistBot`. All disabled by default. Per-bot `verification`,
+  `jwks_url` and `signature_agents` metadata.
+- **Anthropic IP ranges**, from the vendor's own article (support.claude.com
+  8896518, updated 2026-04-07): `https://claude.com/crawling/bots.json` now
+  backs `ClaudeBot`, `Claude-User` and `Claude-SearchBot`, and all four
+  Anthropic entries carry a `docs_url`. The list is one feed for the whole
+  fleet, so the entries are flagged `ip_ranges_shared` and a match is reported
+  as "this came from Anthropic", not "this is ClaudeBot" — the feed cannot
+  support the finer claim. Anthropic also states that blocking those addresses
+  is the wrong way to opt out, because it stops them reading robots.txt at all.
+- Perplexity entries re-verified against `docs.perplexity.ai/docs/resources/`
+  `perplexity-crawlers` (2026-09-05): both JSON endpoints unchanged, no signing
+  origin published, so IP ranges remain the only rail for those two bots.
+- Catalogue is extensible through di.xml (`BotRegistry::$additionalBots`) — an
+  integrator can add a bot without forking. Still release-managed: no runtime
+  registry is fetched over the network.
+- `Content-Signal` / `Content-Usage` placement setting (wildcard group by
+  default, per-bot optional) and an optional three-line policy explanation
+  matching Cloudflare's managed file.
+- Configuration field for additional trusted Web Bot Auth signing origins.
+
+### Changed
+
+- **INJECT mode no longer re-renders the file.** Groups now carry their line
+  span, so only the lines this module owns are cut and every other byte —
+  comments inside groups, blank-line layout, directive order — survives
+  untouched. Mixed groups keep their foreign tokens and rules.
+- REPLACE mode preserves top-level `License:` and unrecognised directives from
+  the previous file, as INJECT mode has since 3.0.0.
+- `MagentoSitemapProvider` reads the sitemap table through `ResourceConnection`
+  instead of using `ObjectManagerInterface` as a service locator (Magento
+  coding standard, Marketplace review).
+- The admin stylesheet loads on the config and dashboard pages instead of every
+  page in the backend.
+- PHP `~8.2.0||~8.3.0||~8.4.0||~8.5.0`, so the module installs on Magento 2.4.9
+  (PHP 8.5, Symfony 7.4). `ext-sodium` and `ext-json` are now declared.
+- GitHub Actions CI: lint plus PHPUnit on PHP 8.2, 8.3, 8.4 and 8.5.
+
+### Removed
+
+- `BotDefinition::BOTS_IGNORING_CRAWL_DELAY` — deprecated in 3.0.0, superseded
+  by per-bot `supports_crawl_delay`.
+- `BotRegistry::CACHE_KEY` is now `CACHE_KEY_PREFIX`; the key is bumped to `_v4`
+  and keyed by the di.xml payload so a catalogue change cannot be served from a
+  stale entry.
+- `view/adminhtml/layout/default.xml`.
+
+### Breaking
+
+- `RobotsInjector` takes `RobotsLineSanitizer` and `LoggerInterface`;
+  `UrlFetcher` takes `IpGuard`; `BotRegistry` takes `$additionalBots`.
+  Constructor injection, so only direct instantiation is affected.
+- `RobotsTxtParser::getWildcardDisallows()` returns `/` instead of dropping it.
+- `BotDefinition` gained `$verification`, `$jwksUrl` and `$signatureAgents`.
+- Minimum PHP is 8.2.
+
 ## [3.0.0] — 2026-06-11
 
 Major release. Every feature is backed by primary-source verification

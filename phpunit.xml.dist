@@ -16,10 +16,10 @@
     </testsuites>
     <source>
         <include>
+            <directory>Api</directory>
             <directory>Block</directory>
             <directory>Console</directory>
             <directory>Controller</directory>
-            <directory>Cron</directory>
             <directory>Model</directory>
             <directory>Plugin</directory>
         </include>

@@ -37,7 +37,8 @@
                 <field id="custom_content" translate="label comment" type="textarea" sortOrder="30"
                        showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Custom robots.txt Content (Replace mode)</label>
-                    <comment>Used only in Replace mode. If empty, safe Magento defaults will be applied. The Angeo AI block is always prepended automatically.</comment>
+                    <comment><![CDATA[Used only in Replace mode. If empty, safe Magento defaults will be applied. The Angeo AI block is always prepended automatically. Content is sanitised on save; a site-wide <code>Disallow: /</code> is refused here — disable the module for that store view instead.]]></comment>
+                    <backend_model>Angeo\RobotsTxtAeo\Model\Config\Backend\CustomContent</backend_model>
                     <depends>
                         <field id="enabled">1</field>
                         <field id="mode">replace</field>
@@ -152,7 +153,49 @@
                 <field id="meta_external_agent" translate="label comment" type="select" sortOrder="130"
                        showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Meta-ExternalAgent (Meta AI)</label>
-                    <comment>Meta AI training and on-demand fetch crawler.</comment>
+                    <comment>Meta AI training and index crawler.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="applebot_extended" translate="label comment" type="select" sortOrder="105"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Applebot-Extended (Apple model training)</label>
+                    <comment><![CDATA[Control token for Apple foundation-model training. Separate from <code>Applebot</code>: blocking this keeps Siri and Spotlight results while opting out of training. Off by default.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="meta_external_fetcher" translate="label comment" type="select" sortOrder="135"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>meta-externalfetcher (Meta AI user fetch)</label>
+                    <comment>Fetches a page because a person asked Meta AI about it. Off by default.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="ccbot" translate="label comment" type="select" sortOrder="140"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>CCBot (Common Crawl)</label>
+                    <comment>Builds the open dataset many models are trained on. Blocking removes you from a corpus you cannot re-enter retroactively. Off by default.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="bytespider" translate="label comment" type="select" sortOrder="150"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Bytespider (ByteDance training)</label>
+                    <comment>No published documentation and a poor robots.txt compliance record — a rule here is a request, not a control. Off by default.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="mistralai_user" translate="label comment" type="select" sortOrder="160"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>MistralAI-User (Le Chat user fetch)</label>
+                    <comment>Mistral Le Chat fetches a page on a user request. Off by default.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="duckassistbot" translate="label comment" type="select" sortOrder="170"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>DuckAssistBot (DuckDuckGo AI answers)</label>
+                    <comment>Fetches pages for DuckDuckGo AI answers. Off by default.</comment>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
             </group>
@@ -333,6 +376,34 @@
                     <label>ai-input — use as input to AI answers (RAG/grounding)</label>
                     <source_model>Angeo\RobotsTxtAeo\Model\Config\Source\SignalState</source_model>
                     <depends><field id="cloudflare_enabled">1</field></depends>
+                </field>
+
+                <field id="placement" translate="label comment" type="select" sortOrder="70"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Where to write the signals</label>
+                    <comment><![CDATA[A signal inside a bot group applies to that crawler only. Cloudflare's managed robots.txt puts it in the <code>User-agent: *</code> group, which makes it a statement about the whole site — that is the default since 4.0.0. Choose per-bot only if you need different answers for different crawlers.]]></comment>
+                    <source_model>Angeo\RobotsTxtAeo\Model\Config\Source\SignalPlacement</source_model>
+                </field>
+
+                <field id="policy_comment" translate="label comment" type="select" sortOrder="80"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Include the short policy explanation</label>
+                    <comment>Adds three comment lines above the signals explaining what yes / no / no-signal mean, the way Cloudflare's managed file does.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+            </group>
+
+            <!-- ──────────── Bot verification (v4.0.0) ──────────── -->
+            <group id="verification" translate="label comment" type="text" sortOrder="38"
+                   showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>Bot Verification</label>
+                <comment><![CDATA[A <code>User-agent</code> header proves nothing — anyone can send one. Two rails carry actual proof: the IP ranges a vendor publishes, and Web Bot Auth request signatures (RFC 9421). Check either with <code>bin/magento angeo:robots:verify-bot-ip</code> and <code>bin/magento angeo:robots:verify-bot-request</code>. This module reports; blocking belongs at your WAF or CDN.]]></comment>
+
+                <field id="trusted_signature_agents" translate="label comment" type="textarea" sortOrder="10"
+                       showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Additional trusted signing origins</label>
+                    <comment><![CDATA[One https origin per line, e.g. <code>https://chatgpt.com</code>. Origins shipped in the bot catalogue are trusted already; add one here when a vendor publishes a new signing origin between module releases. A <code>Signature-Agent</code> value that is not on this list is never used to fetch keys.]]></comment>
+                    <backend_model>Angeo\RobotsTxtAeo\Model\Config\Backend\SignatureAgents</backend_model>
                 </field>
             </group>
 

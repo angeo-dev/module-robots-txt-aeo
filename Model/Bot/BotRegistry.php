@@ -11,33 +11,45 @@ use Psr\Log\LoggerInterface;
 /**
  * Single source of truth for all known AI crawler bots.
  *
- * Bot catalogue is static — defined in BUILTIN_BOTS — and ships with the
- * module. New bots are added via module releases, not at runtime. This is
- * deliberate: robots.txt content is a security-relevant surface, and the
- * trade-off of "convenience of dynamic catalogue" against "anyone with the
- * registry endpoint can inject UA strings into every install's robots.txt"
- * isn't worth it.
+ * The catalogue ships with the module and is release-managed. There is no
+ * runtime registry fetched over the network: robots.txt content is a
+ * security-relevant surface, and "whoever controls the registry endpoint
+ * controls every install's robots.txt" is not a trade worth making.
+ *
+ * Integrators who need one extra bot no longer have to fork. The constructor
+ * takes an $additionalBots array that di.xml can fill — still a deployed,
+ * reviewed artifact, not a live feed:
+ *
+ *   <type name="Angeo\RobotsTxtAeo\Model\Bot\BotRegistry">
+ *       <arguments>
+ *           <argument name="additionalBots" xsi:type="array">
+ *               <item name="my_bot" xsi:type="array">
+ *                   <item name="user_agent" xsi:type="string">MyBot</item>
+ *                   <item name="label" xsi:type="string">MyBot</item>
+ *                   <item name="default_enabled" xsi:type="boolean">false</item>
+ *               </item>
+ *           </argument>
+ *       </arguments>
+ *   </type>
  *
  * The dedicated cache type (angeo_robots_txt_aeo) holds the hydrated
- * BotDefinition[] for 1 h so we don't re-parse the BUILTIN_BOTS constant on
- * every robots.txt request. Cache flush via System → Cache Management.
+ * BotDefinition[] so BUILTIN_BOTS is not re-parsed on every robots.txt
+ * request. Flush via System → Cache Management.
  *
- * @since 2.0.0 — caches via dedicated cache type; +5 built-in bots; removed
- *                in-memory cache layer. v2.0.0 dropped the remote-registry
- *                runtime overlay — catalogue is now release-managed.
- * @since 3.0.0 — catalogue re-verified against primary vendor documentation
- *                (developers.openai.com/api/docs/bots, support.claude.com
- *                update of 2026-02, developers.google.com/crawling/docs,
- *                docs.perplexity.ai). Added Claude-SearchBot and OAI-AdsBot;
- *                anthropic-ai marked deprecated (Anthropic deprecated the
- *                token); per-bot category / token_only / supports_crawl_delay
- *                / ip_ranges_url metadata. Cache key bumped to _v3 so stale
- *                2.x payloads without metadata are not rehydrated.
+ * @since 2.0.0 — dedicated cache type; remote-registry overlay removed.
+ * @since 3.0.0 — catalogue verified against primary vendor documentation;
+ *                per-bot category / token_only / supports_crawl_delay /
+ *                ip_ranges_url metadata.
+ * @since 4.0.0 — verification metadata per bot (published IP ranges and/or
+ *                Web Bot Auth signing origins), six new tokens, di.xml
+ *                extension point, cache key bumped to _v4 and now keyed by
+ *                the additional-bot payload so a di.xml change cannot be
+ *                served from a stale entry.
  */
 class BotRegistry
 {
-    public const CACHE_KEY = 'angeo_robots_txt_aeo_bot_registry_v3';
-    public const CACHE_TTL = 3600;
+    public const CACHE_KEY_PREFIX = 'angeo_robots_txt_aeo_bot_registry_v4';
+    public const CACHE_TTL        = 3600;
 
     /** @var array<string, array<string, mixed>> */
     public const BUILTIN_BOTS = [
@@ -68,6 +80,12 @@ class BotRegistry
             'category'             => 'user_fetch',
             'ip_ranges_url'        => 'https://openai.com/chatgpt-user.json',
             'docs_url'             => 'https://developers.openai.com/api/docs/bots',
+            // OpenAI documents Web Bot Auth for ChatGPT's browsing/agent
+            // traffic: Signature-Agent: "https://chatgpt.com", keys at
+            // https://chatgpt.com/.well-known/http-message-signatures-directory
+            // (help.openai.com/en/articles/11845367).
+            'jwks_url'             => 'https://chatgpt.com/.well-known/http-message-signatures-directory',
+            'signature_agents'     => ['https://chatgpt.com'],
         ],
         'oai_adsbot' => [
             'user_agent'           => 'OAI-AdsBot',
@@ -78,11 +96,13 @@ class BotRegistry
             'docs_url'             => 'https://developers.openai.com/api/docs/bots',
         ],
 
-        // ── Perplexity — docs.perplexity.ai/docs/resources/perplexity-crawlers ──
+        // ── Perplexity — docs.perplexity.ai/docs/resources/perplexity-crawlers
+        //    (verified 2026-09-05). Two bots, one JSON range endpoint each, no
+        //    signing origin published — IP ranges are the only rail here. ──
         'perplexitybot' => [
             'user_agent'           => 'PerplexityBot',
             'label'                => 'PerplexityBot',
-            'description'          => 'Perplexity search index — not used to train foundation models (vendor statement)',
+            'description'          => 'Perplexity search index — surfaces and links sites in Perplexity results; vendor states it is not used to crawl content for AI foundation models',
             'category'             => 'search',
             'ip_ranges_url'        => 'https://www.perplexity.com/perplexitybot.json',
             'docs_url'             => 'https://docs.perplexity.ai/docs/resources/perplexity-crawlers',
@@ -109,21 +129,30 @@ class BotRegistry
             'docs_url'             => 'https://developers.google.com/crawling/docs/crawlers-fetchers',
         ],
 
-        // ── Anthropic — support.claude.com (doc update 2026-02): three bots;
-        //    Crawl-delay documented as supported; Anthropic-AI / Claude-Web deprecated ──
+        // ── Anthropic — support.claude.com article 8896518 (updated 2026-04-07).
+        //    One IP list covers all three bots: a match proves the request came
+        //    from Anthropic, not which of its crawlers sent it. Anthropic also
+        //    states plainly that blocking those addresses is the wrong opt-out,
+        //    because it stops them reading robots.txt in the first place. ──
         'claudebot' => [
             'user_agent'           => 'ClaudeBot',
             'label'                => 'ClaudeBot',
             'description'          => 'Anthropic training crawler — collects public web content that may be used to train Claude models',
             'category'             => 'training',
             'supports_crawl_delay' => true,
+            'ip_ranges_url'        => 'https://claude.com/crawling/bots.json',
+            'ip_ranges_shared'     => true,
+            'docs_url'             => 'https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler',
         ],
         'claude_user' => [
             'user_agent'           => 'Claude-User',
             'label'                => 'Claude-User',
-            'description'          => 'Claude user-triggered fetch — retrieves pages when a Claude user asks a question',
+            'description'          => 'Claude user-triggered fetch — retrieves pages when a Claude user asks a question. Anthropic documents that it honours robots.txt.',
             'category'             => 'user_fetch',
             'supports_crawl_delay' => true,
+            'ip_ranges_url'        => 'https://claude.com/crawling/bots.json',
+            'ip_ranges_shared'     => true,
+            'docs_url'             => 'https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler',
         ],
         'claude_searchbot' => [
             'user_agent'           => 'Claude-SearchBot',
@@ -131,6 +160,9 @@ class BotRegistry
             'description'          => 'Anthropic search-quality crawler — indexes content to improve relevance of Claude search results',
             'category'             => 'search',
             'supports_crawl_delay' => true,
+            'ip_ranges_url'        => 'https://claude.com/crawling/bots.json',
+            'ip_ranges_shared'     => true,
+            'docs_url'             => 'https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler',
         ],
         'anthropic_ai' => [
             'user_agent'           => 'anthropic-ai',
@@ -139,15 +171,26 @@ class BotRegistry
             'category'             => 'training',
             'deprecated'           => true,
             'default_enabled'      => false,
+            'docs_url'             => 'https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler',
         ],
 
-        // ── Other vendors ─────────────────────────────────────────────────
+        // ── Apple ─────────────────────────────────────────────────────────
         'applebot' => [
             'user_agent'           => 'Applebot',
             'label'                => 'Applebot',
-            'description'          => 'Apple Intelligence / Siri fetcher (Applebot-Extended is the separate training opt-out token)',
+            'description'          => 'Apple Intelligence / Siri fetcher — powers Siri and Spotlight results',
             'category'             => 'search',
         ],
+        'applebot_extended' => [
+            'user_agent'           => 'Applebot-Extended',
+            'label'                => 'Applebot-Extended',
+            'description'          => 'robots.txt control token for Apple foundation-model training. Separate from Applebot: blocking it keeps Siri/Spotlight results while opting out of training.',
+            'category'             => 'token',
+            'token_only'           => true,
+            'default_enabled'      => false,
+        ],
+
+        // ── Other vendors ─────────────────────────────────────────────────
         'cohere_ai' => [
             'user_agent'           => 'cohere-ai',
             'label'                => 'cohere-ai',
@@ -158,41 +201,87 @@ class BotRegistry
         'amazonbot' => [
             'user_agent'           => 'Amazonbot',
             'label'                => 'Amazonbot',
-            'description'          => 'Amazon Alexa AI training & retrieval',
+            'description'          => 'Amazon Alexa / Rufus AI training & retrieval',
             'category'             => 'training',
             'default_enabled'      => false,
         ],
         'meta_external_agent' => [
             'user_agent'           => 'Meta-ExternalAgent',
             'label'                => 'Meta-ExternalAgent',
-            'description'          => 'Meta AI training and on-demand fetch',
+            'description'          => 'Meta AI training and index crawler',
             'category'             => 'training',
+            'default_enabled'      => false,
+        ],
+        'meta_external_fetcher' => [
+            'user_agent'           => 'meta-externalfetcher',
+            'label'                => 'meta-externalfetcher',
+            'description'          => 'Meta user-triggered fetch — retrieves a page because a person asked Meta AI about it',
+            'category'             => 'user_fetch',
+            'default_enabled'      => false,
+        ],
+        'ccbot' => [
+            'user_agent'           => 'CCBot',
+            'label'                => 'CCBot',
+            'description'          => 'Common Crawl — builds the open dataset many models are trained on. Blocking it removes you from a corpus you cannot re-enter retroactively.',
+            'category'             => 'training',
+            'default_enabled'      => false,
+        ],
+        'bytespider' => [
+            'user_agent'           => 'Bytespider',
+            'label'                => 'Bytespider',
+            'description'          => 'ByteDance training crawler. No published documentation and a poor robots.txt compliance record — a rule here is a request, not a control.',
+            'category'             => 'training',
+            'default_enabled'      => false,
+        ],
+        'mistralai_user' => [
+            'user_agent'           => 'MistralAI-User',
+            'label'                => 'MistralAI-User',
+            'description'          => 'Mistral Le Chat user-triggered fetch',
+            'category'             => 'user_fetch',
+            'default_enabled'      => false,
+        ],
+        'duckassistbot' => [
+            'user_agent'           => 'DuckAssistBot',
+            'label'                => 'DuckAssistBot',
+            'description'          => 'DuckDuckGo AI answers fetcher',
+            'category'             => 'user_fetch',
             'default_enabled'      => false,
         ],
     ];
 
+    /** @var array<string, BotDefinition>|null */
+    private ?array $runtimeCache = null;
+
+    /**
+     * @param array<string, array<string, mixed>> $additionalBots catalogue rows added via di.xml
+     */
     public function __construct(
         private readonly RobotsTxtAeoCache   $cache,
         private readonly SerializerInterface $serializer,
         private readonly LoggerInterface     $logger,
+        private readonly array               $additionalBots = [],
     ) {}
 
     /** @return array<string, BotDefinition> */
     public function all(): array
     {
-        $cached = $this->cache->load(self::CACHE_KEY);
+        if ($this->runtimeCache !== null) {
+            return $this->runtimeCache;
+        }
+
+        $cached = $this->cache->load($this->cacheKey());
         if (is_string($cached) && $cached !== '') {
             try {
                 $data = $this->serializer->unserialize($cached);
                 if (is_array($data)) {
-                    return $this->rehydrate($data);
+                    return $this->runtimeCache = $this->rehydrate($data);
                 }
             } catch (\Throwable $e) {
                 $this->logger->warning('[Angeo_RobotsTxtAeo] Bot registry cache corrupted: ' . $e->getMessage());
             }
         }
 
-        return $this->buildAndCache();
+        return $this->runtimeCache = $this->buildAndCache();
     }
 
     public function get(string $key): ?BotDefinition
@@ -200,23 +289,80 @@ class BotRegistry
         return $this->all()[$key] ?? null;
     }
 
-    /** Built-ins. Same as all() — kept as a separate method for symmetry. */
+    /**
+     * Look up a definition by its robots.txt product token (case-insensitive).
+     *
+     * @since 4.0.0
+     */
+    public function getByUserAgent(string $userAgent): ?BotDefinition
+    {
+        $needle = strtolower(trim($userAgent));
+        foreach ($this->all() as $bot) {
+            if (strtolower($bot->userAgent) === $needle) {
+                return $bot;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The catalogue as shipped plus di.xml additions, without cache.
+     *
+     * @return array<string, BotDefinition>
+     */
     public function builtins(): array
     {
         $result = [];
-        foreach (self::BUILTIN_BOTS as $key => $data) {
-            $result[$key] = BotDefinition::fromArray($key, $data + ['source' => 'builtin']);
+        foreach ($this->catalogue() as $key => $data) {
+            $result[$key] = BotDefinition::fromArray((string) $key, $data + ['source' => 'builtin']);
         }
         return $result;
     }
 
-    /** Drop cache so next all() call re-hydrates from BUILTIN_BOTS. */
+    /** Drop cache so the next all() call re-hydrates from the catalogue. */
     public function invalidate(): void
     {
-        $this->cache->remove(self::CACHE_KEY);
+        $this->runtimeCache = null;
+        $this->cache->remove($this->cacheKey());
     }
 
     // ── Internals ─────────────────────────────────────────────────────────
+
+    /**
+     * Built-in rows merged with di.xml additions. A di.xml row with a built-in
+     * key overrides that entry field by field.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function catalogue(): array
+    {
+        $catalogue = self::BUILTIN_BOTS;
+
+        foreach ($this->additionalBots as $key => $row) {
+            if (!is_string($key) || $key === '' || !is_array($row)) {
+                continue;
+            }
+            $catalogue[$key] = isset($catalogue[$key])
+                ? array_merge($catalogue[$key], $row)
+                : $row;
+        }
+
+        return $catalogue;
+    }
+
+    /**
+     * Cache key bound to the di.xml payload — otherwise a deployment that adds
+     * or edits a bot keeps serving the previous catalogue until someone
+     * remembers to flush.
+     */
+    private function cacheKey(): string
+    {
+        if ($this->additionalBots === []) {
+            return self::CACHE_KEY_PREFIX;
+        }
+
+        return self::CACHE_KEY_PREFIX . '_' . substr(sha1(json_encode($this->additionalBots) ?: ''), 0, 12);
+    }
 
     /** @return array<string, BotDefinition> */
     private function buildAndCache(): array
@@ -226,7 +372,7 @@ class BotRegistry
         try {
             $this->cache->save(
                 $this->serializer->serialize(array_map(fn(BotDefinition $b) => $b->toArray(), $merged)),
-                self::CACHE_KEY,
+                $this->cacheKey(),
                 [RobotsTxtAeoCache::CACHE_TAG],
                 self::CACHE_TTL
             );
@@ -237,13 +383,16 @@ class BotRegistry
         return $merged;
     }
 
-    /** @param array<string, array<string, mixed>> $data */
+    /**
+     * @param array<string, array<string, mixed>> $data
+     * @return array<string, BotDefinition>
+     */
     private function rehydrate(array $data): array
     {
         $result = [];
         foreach ($data as $key => $row) {
             if (is_array($row)) {
-                $result[$key] = BotDefinition::fromArray($key, $row);
+                $result[(string) $key] = BotDefinition::fromArray((string) $key, $row);
             }
         }
         return $result;

@@ -131,7 +131,7 @@ class BotRegistryTest extends TestCase
 
     public function testInvalidateClearsCache(): void
     {
-        $this->cache->expects($this->once())->method('remove')->with(BotRegistry::CACHE_KEY);
+        $this->cache->expects($this->once())->method('remove')->with(BotRegistry::CACHE_KEY_PREFIX);
         $this->build()->invalidate();
     }
 }

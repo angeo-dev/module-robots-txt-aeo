@@ -27,9 +27,26 @@ use Angeo\RobotsTxtAeo\Model\Parser\UserAgentGroup;
  *    imposes no restriction. A URL with no matching rule is allowed.
  *
  * @since 3.0.0
+ * @since 4.0.0 — pattern compilation is hardened against catastrophic
+ *                backtracking. Patterns come from a fetched robots.txt, which
+ *                is untrusted input: "/a*a*a*a*a*b" compiled naively to
+ *                "/a.*a.*a.*a.*a.*b" is an exponential matcher. Consecutive
+ *                wildcards are collapsed, over-long patterns are refused, the
+ *                compiled regex runs under an explicit backtrack limit, and a
+ *                PCRE failure is treated as "no match" instead of a silent
+ *                false.
  */
 class RepMatcher
 {
+    /** Patterns longer than this are ignored — no legitimate rule is. */
+    public const MAX_PATTERN_LENGTH = 1024;
+
+    /** Patterns with more wildcards than this are ignored. */
+    public const MAX_WILDCARDS = 10;
+
+    /** PCRE backtrack budget for a single pattern match. */
+    public const BACKTRACK_LIMIT = 100000;
+
     /**
      * Evaluate whether $productToken may fetch $path under $parsed.
      */
@@ -144,17 +161,56 @@ class RepMatcher
      */
     private function patternMatches(string $pattern, string $path): bool
     {
+        if (strlen($pattern) > self::MAX_PATTERN_LENGTH) {
+            return false;
+        }
+
         $anchored = str_ends_with($pattern, '$');
         if ($anchored) {
             $pattern = substr($pattern, 0, -1);
         }
 
+        // Collapse runs of wildcards: "**" and "*" match the same language,
+        // but each extra ".*" multiplies the backtracking cost.
+        $pattern = (string) preg_replace('/\*+/', '*', $pattern);
+
+        if (substr_count($pattern, '*') > self::MAX_WILDCARDS) {
+            return false;
+        }
+
+        // A pattern that is only wildcards matches everything ("*" and "*$"
+        // alike); short-circuit rather than handing ".*" to PCRE.
+        if (str_replace('*', '', $pattern) === '') {
+            return true;
+        }
+
+        // Cheap pre-filter: the first literal segment must be a prefix of the
+        // path. Rules out the overwhelming majority of non-matches before the
+        // regex engine is involved at all.
+        $firstStar = strpos($pattern, '*');
+        $prefix    = $firstStar === false ? $pattern : substr($pattern, 0, $firstStar);
+        if ($prefix !== '' && !str_starts_with($path, $prefix)) {
+            return false;
+        }
+
         // Build a regex: escape everything, then expand the escaped "*".
+        // The quantifier stays greedy and backtracking (a possessive one would
+        // change the matched language and break legitimate rules); the cost is
+        // bounded by the wildcard cap and the backtrack limit below instead.
         $regex = preg_quote($pattern, '#');
-        $regex = str_replace('\*', '.*', $regex);
+        $regex = str_replace('\*', '[^\n]*', $regex);
         $regex = '#^' . $regex . ($anchored ? '$' : '') . '#';
 
-        return (bool) preg_match($regex, $path);
+        $backtrackLimit = ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', (string) self::BACKTRACK_LIMIT);
+        $matched = preg_match($regex, $path);
+        if ($backtrackLimit !== false) {
+            ini_set('pcre.backtrack_limit', $backtrackLimit);
+        }
+
+        // preg_match() returns false on error (backtrack limit, bad pattern).
+        // "Could not evaluate" must not read as "rule matched".
+        return $matched === 1;
     }
 
     /**

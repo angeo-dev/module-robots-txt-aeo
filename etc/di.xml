@@ -2,13 +2,14 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 
-    <!-- Public API preference: consumers wire to the interface (e.g. Angeo_AeoAudit) -->
+    <!-- Public API preferences: consumers wire to the interfaces (e.g. Angeo_AeoAudit) -->
     <preference for="Angeo\RobotsTxtAeo\Api\RobotsStatusInterface"
                 type="Angeo\RobotsTxtAeo\Model\RobotsStatus"/>
+    <preference for="Angeo\RobotsTxtAeo\Api\BotVerificationInterface"
+                type="Angeo\RobotsTxtAeo\Model\BotVerification"/>
 
-    <!-- Sitemap provider: real implementation safely no-ops when
-         Magento_Sitemap is not installed (class_exists check inside).
-         Tests use NullMagentoSitemapProvider directly. -->
+    <!-- Sitemap provider: reads the Magento_Sitemap table when it exists and
+         returns nothing when it does not. Tests use NullMagentoSitemapProvider. -->
     <preference for="Angeo\RobotsTxtAeo\Model\Sitemap\MagentoSitemapProviderInterface"
                 type="Angeo\RobotsTxtAeo\Model\Sitemap\MagentoSitemapProvider"/>
 
@@ -17,6 +18,35 @@
         <plugin name="angeo_robots_txt_aeo_model_plugin"
                 type="Angeo\RobotsTxtAeo\Plugin\RobotsModelPlugin"/>
     </type>
+
+    <!-- Verification rails. Order in this array does not matter: the service
+         always tries a cryptographic signature before an IP range, because a
+         signature survives a proxy and an address does not. -->
+    <type name="Angeo\RobotsTxtAeo\Model\BotVerification">
+        <arguments>
+            <argument name="verifiers" xsi:type="array">
+                <item name="web_bot_auth" xsi:type="object">Angeo\RobotsTxtAeo\Model\Verify\WebBotAuthVerifier</item>
+                <item name="ip_range" xsi:type="object">Angeo\RobotsTxtAeo\Model\Verify\IpRangeVerifier</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- Catalogue extension point. Add a bot here instead of forking the
+         module; the shipped entries stay release-managed.
+
+         <type name="Angeo\RobotsTxtAeo\Model\Bot\BotRegistry">
+             <arguments>
+                 <argument name="additionalBots" xsi:type="array">
+                     <item name="my_bot" xsi:type="array">
+                         <item name="user_agent" xsi:type="string">MyBot</item>
+                         <item name="label" xsi:type="string">MyBot</item>
+                         <item name="description" xsi:type="string">Internal crawler</item>
+                         <item name="default_enabled" xsi:type="boolean">false</item>
+                     </item>
+                 </argument>
+             </arguments>
+         </type>
+    -->
 
     <!-- CLI commands -->
     <type name="Magento\Framework\Console\CommandList">
@@ -28,6 +58,8 @@
                       xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\PreviewCommand</item>
                 <item name="angeo_robots_txt_aeo_verify_bot_ip"
                       xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\VerifyBotIpCommand</item>
+                <item name="angeo_robots_txt_aeo_verify_bot_request"
+                      xsi:type="object">Angeo\RobotsTxtAeo\Console\Command\VerifyBotRequestCommand</item>
             </argument>
         </arguments>
     </type>

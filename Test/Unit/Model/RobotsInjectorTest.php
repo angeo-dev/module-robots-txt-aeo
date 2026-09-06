@@ -8,6 +8,8 @@ use Angeo\RobotsTxtAeo\Model\Bot\BotDefinition;
 use Angeo\RobotsTxtAeo\Model\Config;
 use Angeo\RobotsTxtAeo\Model\Parser\RobotsTxtParser;
 use Angeo\RobotsTxtAeo\Model\Rep\RepMatcher;
+use Angeo\RobotsTxtAeo\Model\Sanitizer\RobotsLineSanitizer;
+use Psr\Log\NullLogger;
 use Angeo\RobotsTxtAeo\Model\RobotsInjector;
 use Angeo\RobotsTxtAeo\Model\SitemapResolver;
 use Angeo\RobotsTxtAeo\Model\UrlFetcher;
@@ -34,6 +36,8 @@ class RobotsInjectorTest extends TestCase
             $this->sitemapResolver,
             $this->urlFetcher,
             new RepMatcher(),
+            new RobotsLineSanitizer(),
+            new NullLogger(),
         );
 
         $this->sitemapResolver->method('resolve')->willReturn([]);
@@ -248,7 +252,15 @@ TXT;
             'https://example.com/sitemap.xml',
             'https://example.com/sitemap-products.xml',
         ]);
-        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver, $this->urlFetcher, new RepMatcher());
+        $injector = new RobotsInjector(
+            $this->config,
+            $this->parser,
+            $sitemapResolver,
+            $this->urlFetcher,
+            new RepMatcher(),
+            new RobotsLineSanitizer(),
+            new NullLogger()
+        );
 
         $result = $injector->process("User-agent: *\nDisallow: /checkout/\n");
 
@@ -266,7 +278,15 @@ TXT;
 
         $sitemapResolver = $this->createMock(SitemapResolver::class);
         $sitemapResolver->method('resolve')->willReturn(['https://example.com/sitemap.xml']);
-        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver, $this->urlFetcher, new RepMatcher());
+        $injector = new RobotsInjector(
+            $this->config,
+            $this->parser,
+            $sitemapResolver,
+            $this->urlFetcher,
+            new RepMatcher(),
+            new RobotsLineSanitizer(),
+            new NullLogger()
+        );
 
         $existing = "Sitemap: https://example.com/sitemap.xml\nUser-agent: *\nDisallow: /\n";
         $result   = $injector->process($existing);
@@ -282,7 +302,15 @@ TXT;
 
         $sitemapResolver = $this->createMock(SitemapResolver::class);
         $sitemapResolver->method('resolve')->willReturn(['https://example.com/sitemap.xml']);
-        $injector = new RobotsInjector($this->config, $this->parser, $sitemapResolver, $this->urlFetcher, new RepMatcher());
+        $injector = new RobotsInjector(
+            $this->config,
+            $this->parser,
+            $sitemapResolver,
+            $this->urlFetcher,
+            new RepMatcher(),
+            new RobotsLineSanitizer(),
+            new NullLogger()
+        );
 
         $first  = $injector->process("User-agent: *\nDisallow: /\n");
         $second = $injector->process($first);
@@ -490,6 +518,8 @@ TXT;
             $this->sitemapResolver,
             $this->urlFetcher,
             new RepMatcher(),
+            new RobotsLineSanitizer(),
+            new NullLogger(),
         );
 
         $this->configureInjectMode($this->sampleBots());
@@ -515,12 +545,140 @@ TXT;
             $this->sitemapResolver,
             $this->urlFetcher,
             new RepMatcher(),
+            new RobotsLineSanitizer(),
+            new NullLogger(),
         );
 
         $this->configureInjectMode($this->sampleBots());
         $output = $this->injector->process('');
 
         $this->assertStringContainsString('Sitemap: http://example.test/sitemap.xml', $output);
+    }
+
+    // ── v4.0.0 ──────────────────────────────────────────────────────────────
+
+    public function testReplaceStandsDownWhenTheSiteIsFullyBlocked(): void
+    {
+        // The 3.0.0 bug this guards against: "Disallow: /" was filtered out
+        // while collecting wildcard rules, so a deliberately closed staging
+        // shop came back out of REPLACE mode fully crawlable.
+        $this->configureReplaceMode($this->sampleBots());
+        $this->config->method('getCustomContent')->willReturn('');
+
+        $blocked = "User-agent: *\nDisallow: /\n";
+
+        $this->assertSame($blocked, $this->injector->process($blocked));
+    }
+
+    public function testValidateExplainsWhyReplaceStoodDown(): void
+    {
+        $this->configureReplaceMode($this->sampleBots());
+
+        $warnings = $this->injector->validate("User-agent: *\nDisallow: /\n")['warnings'];
+
+        $this->assertNotEmpty($warnings);
+        $this->assertStringContainsString('standing down', implode(' ', $warnings));
+    }
+
+    public function testReplaceStillRunsForOrdinaryWildcardRules(): void
+    {
+        $this->configureReplaceMode($this->sampleBots());
+        $this->config->method('getCustomContent')->willReturn('');
+
+        $result = $this->injector->process("User-agent: *\nDisallow: /checkout/\nDisallow: /admin_x/\n");
+
+        $this->assertStringContainsString('Disallow: /admin_x/', $result);
+        $this->assertStringContainsString('Allow: /', $result);
+    }
+
+    public function testInjectPreservesOperatorCommentsAndForeignGroups(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+
+        $existing = "# Managed by ops, do not delete\n"
+            . "User-agent: *\n"
+            . "# staging paths\n"
+            . "Disallow: /checkout/\n\n"
+            . "User-agent: SemrushBot\n"
+            . "Disallow: /\n";
+
+        $result = $this->injector->process($existing);
+
+        $this->assertStringContainsString('# Managed by ops, do not delete', $result);
+        $this->assertStringContainsString('# staging paths', $result);
+        $this->assertStringContainsString('User-agent: SemrushBot', $result);
+    }
+
+    public function testInjectRemovesOurOwnStandaloneGroup(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+
+        $result = $this->injector->process(
+            "User-agent: OAI-SearchBot\nDisallow: /old/\n\nUser-agent: *\nDisallow: /checkout/\n"
+        );
+
+        $this->assertSame(1, substr_count($result, 'User-agent: OAI-SearchBot'));
+        $this->assertStringNotContainsString('Disallow: /old/', $result);
+    }
+
+    public function testInjectKeepsForeignTokensInAMixedGroup(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+
+        $result = $this->injector->process(
+            "User-agent: OAI-SearchBot\nUser-agent: SomeOtherBot\nDisallow: /private/\n"
+        );
+
+        $this->assertStringContainsString('User-agent: SomeOtherBot', $result);
+        $this->assertStringContainsString('Disallow: /private/', $result);
+        $this->assertSame(1, substr_count($result, 'User-agent: OAI-SearchBot'));
+    }
+
+    public function testStoredPathCannotForgeADirective(): void
+    {
+        // A value can reach ScopeConfig without passing a backend model
+        // (direct DB write, app/etc/config.php). The renderer sanitises anyway.
+        $this->configureInjectMode([
+            'gptbot' => new BotDefinition(
+                key:         'gptbot',
+                userAgent:   'GPTBot',
+                label:       'GPTBot',
+                description: '',
+                allowPaths:  ["/\nUser-agent: *\nDisallow: /"],
+            ),
+        ]);
+
+        $result = $this->injector->process('');
+
+        $this->assertSame(0, preg_match('/^Disallow:/m', $result));
+        $this->assertSame(1, preg_match_all('/^User-agent:/m', $result));
+    }
+
+    public function testContentSignalGoesIntoTheWildcardGroupByDefault(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('getContentSignalLines')
+            ->willReturn(['Content-Signal: search=yes, ai-train=no']);
+        $this->config->method('getSignalPlacement')->willReturn(Config::PLACEMENT_WILDCARD);
+        $this->config->method('isSignalPolicyCommentEnabled')->willReturn(false);
+
+        $result = $this->injector->process("User-agent: *\nDisallow: /checkout/\n");
+
+        $this->assertSame(1, substr_count($result, 'Content-Signal:'));
+        $this->assertGreaterThan(strpos($result, 'User-agent: *'), strpos($result, 'Content-Signal:'));
+    }
+
+    public function testContentSignalCanBeRepeatedPerBot(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('getContentSignalLines')
+            ->willReturn(['Content-Signal: search=yes, ai-train=no']);
+        $this->config->method('getSignalPlacement')->willReturn(Config::PLACEMENT_PER_BOT);
+        $this->config->method('isSignalPolicyCommentEnabled')->willReturn(false);
+
+        $result = $this->injector->process("User-agent: *\nDisallow: /checkout/\n");
+
+        $this->assertSame(count($this->sampleBots()), substr_count($result, 'Content-Signal:'));
     }
 
     private function extractAngeoBlock(string $output): string

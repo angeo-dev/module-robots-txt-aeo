@@ -2,14 +2,45 @@
 
 [![Packagist](https://img.shields.io/packagist/v/angeo/module-robots-txt-aeo.svg)](https://packagist.org/packages/angeo/module-robots-txt-aeo)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PHP](https://img.shields.io/badge/php-8.1%20|%208.2%20|%208.3%20|%208.4-8892BF.svg)](https://php.net)
-[![Magento](https://img.shields.io/badge/magento-2.4.6%20|%202.4.7%20|%202.4.8-EE672F.svg)](https://magento.com)
+[![PHP](https://img.shields.io/badge/php-8.2%20|%208.3%20|%208.4%20|%208.5-8892BF.svg)](https://php.net)
+[![Magento](https://img.shields.io/badge/magento-2.4.6%20|%202.4.7%20|%202.4.8%20|%202.4.9-EE672F.svg)](https://magento.com)
 
 Injects AI crawler rules into your Magento 2 `robots.txt` — **without overwriting your existing configuration**.
 
-Bots managed out-of-the-box: `OAI-SearchBot`, `GPTBot`, `ChatGPT-User`, `PerplexityBot`, `Perplexity-User`, `Google-Extended`, `ClaudeBot`, `anthropic-ai`, `Claude-User`, `Applebot`, `cohere-ai`, `Amazonbot`, `Meta-ExternalAgent`.
+Bots managed out-of-the-box: `OAI-SearchBot`, `GPTBot`, `ChatGPT-User`, `OAI-AdsBot`, `PerplexityBot`, `Perplexity-User`, `Google-Extended`, `ClaudeBot`, `Claude-User`, `Claude-SearchBot`, `anthropic-ai`, `Applebot`, `Applebot-Extended`, `cohere-ai`, `Amazonbot`, `Meta-ExternalAgent`, `meta-externalfetcher`, `CCBot`, `Bytespider`, `MistralAI-User`, `DuckAssistBot`.
+
+Since 4.0.0 it also **verifies** that a crawler is who it claims to be — Web Bot Auth request signatures (RFC 9421) and vendor-published IP ranges.
 
 Fixes the **"robots.txt — AI Bot Access"** signal in [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit).
+
+---
+
+## What's new in 4.0
+
+**robots.txt asks. Web Bot Auth proves.**
+
+- **Bot verification** — `Api\BotVerificationInterface` plus two CLI commands.
+  A `User-agent` header is one line of text anyone can send; a request signed
+  per RFC 9421 and checked against the vendor's published key directory is not.
+  The module reports; it never blocks (that belongs at your WAF or CDN).
+- **INJECT mode stops reformatting your file.** Only the lines this module owns
+  are removed; your comments, spacing and directive order survive byte for byte.
+- **REPLACE mode refuses to unblock a closed site.** A robots.txt with
+  `User-agent: *` + `Disallow: /` used to be rebuilt into a crawlable one. Now
+  the file is served unchanged and the dashboard says why. If you were running
+  Replace mode on a staging shop, this is the fix you want.
+- **Everything emitted is sanitised at render time**, not only on save.
+- **Six new tokens**, all disabled by default — most importantly
+  `Applebot-Extended`, which is the token that actually governs Apple model
+  training (`Applebot` alone does not).
+- **Content signals move to the wildcard group** by default, matching how
+  Cloudflare's managed robots.txt writes them. Set placement to `per_bot` for
+  the 3.x layout.
+- **Magento 2.4.9 / PHP 8.5**, plus CI across PHP 8.2–8.5.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list, including the security
+fixes, and [docs/SPECIFICATION-4.0.0.md](docs/SPECIFICATION-4.0.0.md) for the
+design.
 
 ---
 
@@ -134,6 +165,70 @@ no HTTP round-trip when both modules are installed.
 
 ---
 
+## Verifying that a crawler is genuine
+
+A `User-agent` header proves nothing. Two rails carry actual proof, and the
+module speaks both.
+
+```bash
+# Does this address belong to a published AI crawler range?
+bin/magento angeo:robots:verify-bot-ip 203.0.113.10
+bin/magento angeo:robots:verify-bot-ip 203.0.113.10 --bot=GPTBot
+
+# Was this request really signed by the vendor?
+bin/magento angeo:robots:verify-bot-request \
+    --headers-file=/tmp/headers.txt \
+    --authority=shop.example \
+    --path=/product.html \
+    --ip=203.0.113.10
+```
+
+`headers.txt` is a plain `Name: value` block — what a proxy log or a debug dump
+gives you. Headers can also be passed inline with repeated `--header` options.
+
+Results are one of four states:
+
+| State | Meaning |
+|-------|---------|
+| `verified` | The signature checks out, or the address is in the vendor's published range. |
+| `failed` | It does not. Treat the request as spoofed. |
+| `unknown` | Could not be decided — the key directory was unreachable, or no source IP was supplied. **Not** the same as `failed`. |
+| `unsupported` | The vendor publishes no verification rail for this bot. |
+
+What each vendor publishes today (checked against their own documentation):
+
+| Vendor | IP ranges | Signed requests |
+|---|---|---|
+| OpenAI | yes — three feeds | yes — `https://chatgpt.com` |
+| Anthropic | yes — [one feed for ClaudeBot, Claude-User and Claude-SearchBot](https://claude.com/crawling/bots.json) | not published |
+| Perplexity | yes — one feed per bot | not published |
+| Google, Apple, Meta, ByteDance, Mistral, DuckDuckGo | not published | not published |
+
+A match against Anthropic's feed proves the request came from Anthropic, not
+which of its three bots sent it — the feed is shared, and the module says so
+rather than claiming more. Anthropic also notes that blocking those addresses
+is the wrong way to opt out: it stops them reading your robots.txt, which is
+where the preference actually lives.
+
+Signing origins come from the bot catalogue. When a vendor publishes a new one
+between releases, add it under **Stores → Configuration → Angeo → Robots.txt AEO
+→ Bot Verification**. The `Signature-Agent` header is never trusted on its own.
+
+Programmatic use:
+
+```php
+use Angeo\RobotsTxtAeo\Api\BotVerificationInterface;
+
+public function __construct(private readonly BotVerificationInterface $verification) {}
+
+$result = $this->verification->verifyRequest($headers, 'shop.example', '/product.html');
+if (($result['state'] ?? '') === 'verified') {
+    // proven to be the vendor's crawler
+}
+```
+
+---
+
 ## Cross-module integration (Api\RobotsStatusInterface)
 
 The module exposes a public read-only API that consumer modules can wire to via
@@ -183,9 +278,12 @@ If you'd rather manage AI bot rules yourself, either disable the module (`bin/ma
 
 | | Status |
 |---|---|
-| Magento 2.4.6 (PHP 8.1) | ✅ |
+| Magento 2.4.6 (PHP 8.2) | ✅ |
 | Magento 2.4.7 (PHP 8.2 / 8.3) | ✅ |
 | Magento 2.4.8 (PHP 8.3 / 8.4) | ✅ |
+| Magento 2.4.9 (PHP 8.4 / 8.5) | ✅ |
+| PHP 8.1 | ❌ dropped in 4.0.0 — use 3.0.x |
+| `ext-sodium` | required (ships with PHP; needed for signature verification) |
 | Magento Open Source / Commerce / Cloud | ✅ |
 | Hyvä / PWA Studio | ✅ (robots.txt is server-side) |
 | Multi-store / multi-website | ✅ |

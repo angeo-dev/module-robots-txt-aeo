@@ -7,45 +7,54 @@ namespace Angeo\RobotsTxtAeo\Model\Parser;
 /**
  * Line-by-line state machine parser for robots.txt.
  *
- * Replaces the fragile regex-based parsing that lived inside RobotsInjector.
- * Handles all real-world cases the regex version got wrong:
+ * Handles the real-world cases a regex gets wrong:
  *   - multiple Allow/Disallow lines per User-agent group
  *   - Crawl-delay directives
  *   - inline comments after directive values
- *   - group-level Sitemap (non-grouped, file-level)
+ *   - file-level Sitemap / License directives
  *   - multiple User-agent lines stacking before a directive group
- *   - blank lines inside a group (per RFC 9309 they do NOT terminate the group;
- *     only a new User-agent line or EOF does)
+ *   - blank lines inside a group (per RFC 9309 they do NOT terminate the
+ *     group; only a new User-agent line or EOF does)
  *
- * The parser is forgiving: malformed lines are skipped, not fatal. Comments
- * starting with '#' are preserved on the lines they belong to so the parsed
- * model can be re-serialized losslessly when needed.
+ * The parser is forgiving: malformed lines are skipped, not fatal.
  *
  * Reference: RFC 9309 "Robots Exclusion Protocol"
  *
- * @since 3.0.0 — lossless round-trip: top-level License: directives (RSL 1.0)
- *                are captured in ParsedRobotsTxt::$licenses; unrecognised
- *                directives inside a group (Content-Usage, Content-Signal, …)
- *                are captured in UserAgentGroup::$extraDirectives instead of
- *                being flattened into a top-level list. An unknown directive
- *                following a User-agent line materialises the group, exactly
- *                like Allow/Disallow, so group membership is preserved.
+ * @since 3.0.0 — top-level License: directives (RSL 1.0) are captured in
+ *                ParsedRobotsTxt::$licenses; unrecognised directives inside a
+ *                group (Content-Usage, Content-Signal, …) are captured in
+ *                UserAgentGroup::$extraDirectives.
+ * @since 4.0.0 — the source lines are retained on the result and every group
+ *                records the line span it occupies, so RobotsInjector can cut
+ *                out its own groups without re-rendering (and thereby
+ *                reformatting) the operator's file.
  */
 class RobotsTxtParser
 {
+    /**
+     * Hard ceiling on the number of lines parsed from one document. A
+     * robots.txt served by a misbehaving upstream is untrusted input; without
+     * a cap, parsing is unbounded work on an admin request.
+     *
+     * @since 4.0.0
+     */
+    public const MAX_LINES = 50000;
+
     /**
      * Parse robots.txt content into a structured ParsedRobotsTxt model.
      */
     public function parse(string $content): ParsedRobotsTxt
     {
-        $result = new ParsedRobotsTxt();
+        $result        = new ParsedRobotsTxt();
+        $result->lines = $this->normaliseLines($content);
 
         /** @var UserAgentGroup|null $currentGroup */
         $currentGroup       = null;
-        $pendingUserAgents  = [];     // User-agent lines collected before first directive
-        $expectingDirective = false;  // true after seeing User-agent, before first directive
+        $pendingUserAgents  = [];    // User-agent lines collected before first directive
+        $pendingStartLine   = null;  // line index of the first of those
+        $expectingDirective = false; // true after seeing User-agent, before first directive
 
-        foreach ($this->normaliseLines($content) as $rawLine) {
+        foreach ($result->lines as $index => $rawLine) {
             $line = $this->stripInlineComment($rawLine);
             $line = trim($line);
 
@@ -54,10 +63,10 @@ class RobotsTxtParser
                 continue;
             }
 
-            // Pure-comment line — preserve at top level if no group active
-            if (str_starts_with($rawLine, '#')) {
-                if ($currentGroup === null) {
-                    $result->topComments[] = $rawLine;
+            // Pure-comment line — preserve at top level if no group is active
+            if (str_starts_with(ltrim($rawLine), '#')) {
+                if ($currentGroup === null && $pendingUserAgents === []) {
+                    $result->topComments[] = rtrim($rawLine);
                 }
                 continue;
             }
@@ -80,6 +89,7 @@ class RobotsTxtParser
                             $result->groups[] = $currentGroup;
                         }
                         $pendingUserAgents  = [$value];
+                        $pendingStartLine   = $index;
                         $currentGroup       = null;
                         $expectingDirective = true;
                     }
@@ -90,26 +100,25 @@ class RobotsTxtParser
                 case 'crawl-delay':
                     if ($currentGroup === null) {
                         if (empty($pendingUserAgents)) {
-                            // directive without User-agent — skip
-                            break;
+                            break; // directive without User-agent — skip
                         }
-                        $currentGroup = new UserAgentGroup($pendingUserAgents);
+                        $currentGroup            = new UserAgentGroup($pendingUserAgents);
+                        $currentGroup->startLine = $pendingStartLine;
                     }
-                    $expectingDirective = false;
+                    $expectingDirective    = false;
+                    $currentGroup->endLine = $index;
 
                     if ($directiveLower === 'allow') {
                         $currentGroup->allow[] = $value;
                     } elseif ($directiveLower === 'disallow') {
                         $currentGroup->disallow[] = $value;
-                    } else { // crawl-delay
-                        if (is_numeric($value)) {
-                            $currentGroup->crawlDelay = (float) $value;
-                        }
+                    } elseif (is_numeric($value)) { // crawl-delay
+                        $currentGroup->crawlDelay = (float) $value;
                     }
                     break;
 
                 case 'sitemap':
-                    // Sitemap is a top-level directive, not bound to any User-agent group
+                    // Sitemap is a top-level directive, not bound to a group
                     if ($value !== '') {
                         $result->sitemaps[] = $value;
                     }
@@ -128,10 +137,12 @@ class RobotsTxtParser
                     // Content-Signal, …) and materialises the group the same
                     // way Allow/Disallow do. Otherwise it is a top-level line.
                     if ($currentGroup === null && !empty($pendingUserAgents)) {
-                        $currentGroup = new UserAgentGroup($pendingUserAgents);
+                        $currentGroup            = new UserAgentGroup($pendingUserAgents);
+                        $currentGroup->startLine = $pendingStartLine;
                     }
                     if ($currentGroup !== null) {
-                        $expectingDirective = false;
+                        $expectingDirective              = false;
+                        $currentGroup->endLine           = $index;
                         $currentGroup->extraDirectives[] = $directive . ': ' . $value;
                     } else {
                         $result->unknownDirectives[] = $line;
@@ -145,7 +156,10 @@ class RobotsTxtParser
             $result->groups[] = $currentGroup;
         } elseif (!empty($pendingUserAgents)) {
             // User-agent declared but no directives — keep as empty group for fidelity
-            $result->groups[] = new UserAgentGroup($pendingUserAgents);
+            $group            = new UserAgentGroup($pendingUserAgents);
+            $group->startLine = $pendingStartLine;
+            $group->endLine   = $pendingStartLine;
+            $result->groups[] = $group;
         }
 
         return $result;
@@ -157,10 +171,10 @@ class RobotsTxtParser
      */
     public function hasUserAgent(ParsedRobotsTxt $parsed, string $userAgent): bool
     {
-        $needle = strtolower($userAgent);
+        $needle = strtolower(trim($userAgent));
         foreach ($parsed->groups as $group) {
             foreach ($group->userAgents as $ua) {
-                if (strtolower($ua) === $needle) {
+                if (strtolower(trim($ua)) === $needle) {
                     return true;
                 }
             }
@@ -171,6 +185,12 @@ class RobotsTxtParser
     /**
      * Return Disallow paths from the wildcard (*) group, deduplicated.
      * Used by Replace mode to preserve existing site restrictions.
+     *
+     * @since 4.0.0 — a site-wide "Disallow: /" is NO LONGER dropped here.
+     *                Silently discarding it turned a fully blocked site
+     *                (staging, pre-launch) into a fully crawlable one.
+     *                Callers decide what to do with it; see
+     *                RobotsInjector::buildReplaceContent().
      *
      * @return string[]
      */
@@ -183,12 +203,27 @@ class RobotsTxtParser
             }
             foreach ($group->disallow as $path) {
                 $path = trim($path);
-                if ($path !== '' && $path !== '/') {
+                if ($path !== '') {
                     $paths[] = $path;
                 }
             }
         }
         return array_values(array_unique($paths));
+    }
+
+    /**
+     * Whether the wildcard group blocks the whole site.
+     *
+     * @since 4.0.0
+     */
+    public function wildcardBlocksSite(ParsedRobotsTxt $parsed): bool
+    {
+        foreach ($this->getWildcardDisallows($parsed) as $path) {
+            if ($path === '/' || $path === '/*') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -203,13 +238,18 @@ class RobotsTxtParser
             $content = substr($content, 3);
         }
         $content = str_replace(["\r\n", "\r"], "\n", $content);
-        return explode("\n", $content);
+        $lines   = explode("\n", $content);
+
+        if (count($lines) > self::MAX_LINES) {
+            $lines = array_slice($lines, 0, self::MAX_LINES);
+        }
+
+        return $lines;
     }
 
     /**
-     * Remove inline comment from a line (everything after an unescaped #).
-     * The robots.txt spec uses simple # comments; we don't try to handle
-     * #-in-URL escaping because URLs never appear in a directive value here.
+     * Remove an inline comment from a line (everything after an unescaped #).
+     * A pure-comment line is returned unchanged; the caller handles those.
      */
     private function stripInlineComment(string $line): string
     {
@@ -217,7 +257,6 @@ class RobotsTxtParser
         if ($hashPos === false) {
             return $line;
         }
-        // Keep the line as-is if it's a pure-comment line; caller handles those
         if (trim(substr($line, 0, $hashPos)) === '') {
             return $line;
         }
@@ -225,7 +264,7 @@ class RobotsTxtParser
     }
 
     /**
-     * Split a directive line into [name, value]. Returns [null, null] on malformed input.
+     * Split a directive line into [name, value]. Returns [null, ''] on malformed input.
      *
      * @return array{0: string|null, 1: string}
      */

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Angeo\RobotsTxtAeo\Test\Unit\Model;
 
 use Angeo\RobotsTxtAeo\Model\FetchResult;
+use Angeo\RobotsTxtAeo\Model\Http\IpGuard;
 use Angeo\RobotsTxtAeo\Model\UrlFetcher;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\HTTP\Client\Curl;
@@ -24,9 +25,17 @@ class UrlFetcherTest extends TestCase
     private CurlFactory&MockObject           $curlFactory;
     private LoggerInterface&MockObject       $logger;
     private UrlFetcher                       $fetcher;
+    private IpGuard&MockObject               $ipGuard;
 
     protected function setUp(): void
     {
+        // The guard is stubbed to accept every host: these tests cover the
+        // redirect and retry policy, not address validation. IpGuardTest
+        // covers the blocking rules on their own.
+        $this->ipGuard = $this->createMock(IpGuard::class);
+        $this->ipGuard->method('resolveAllowedAddresses')->willReturn(['203.0.113.10']);
+        $this->ipGuard->method('isAllowedAddress')->willReturn(true);
+
         $this->scopeConfig  = $this->createMock(ScopeConfigInterface::class);
         $this->storeManager = $this->createMock(StoreManagerInterface::class);
         $this->curlFactory  = $this->createMock(CurlFactory::class);
@@ -37,6 +46,7 @@ class UrlFetcherTest extends TestCase
             $this->storeManager,
             $this->curlFactory,
             $this->logger,
+            $this->ipGuard,
         );
     }
 

@@ -18,6 +18,9 @@ use Magento\Store\Model\ScopeInterface;
  *
  * Bot metadata lives in BotRegistry — this class only resolves the boolean
  * enabled-state and per-bot path overrides for each known bot key.
+ *
+ * @since 4.0.0 — Content-Signal placement, signal policy comment, and the
+ *                operator-managed list of trusted Web Bot Auth origins.
  */
 class Config
 {
@@ -145,6 +148,10 @@ class Config
             supportsCrawlDelay: $bot->supportsCrawlDelay,
             ipRangesUrl:        $bot->ipRangesUrl,
             docsUrl:            $bot->docsUrl,
+            verification:       $bot->verification,
+            jwksUrl:            $bot->jwksUrl,
+            signatureAgents:    $bot->signatureAgents,
+            ipRangesShared:     $bot->ipRangesShared,
         );
     }
 
@@ -171,6 +178,10 @@ class Config
     public const SIGNAL_YES   = 'yes';
     public const SIGNAL_NO    = 'no';
     public const SIGNAL_UNSET = 'unset';
+
+    /** Content-Signal placement (4.0.0). */
+    public const PLACEMENT_WILDCARD = 'wildcard';
+    public const PLACEMENT_PER_BOT  = 'per_bot';
 
     /**
      * IETF draft-ietf-aipref-attach: emit a group-scoped Content-Usage rule.
@@ -264,6 +275,67 @@ class Config
             return '';
         }
         return $url;
+    }
+
+    /**
+     * Where the Content-Signal / Content-Usage lines are emitted.
+     *
+     * Cloudflare's managed robots.txt puts them in the "User-agent: *" group,
+     * which is what makes them a site-wide statement. Repeating the line in
+     * every managed bot group (the 3.x behaviour) is valid syntax but narrows
+     * each copy to that one crawler and makes the file noisy, so "wildcard" is
+     * the default from 4.0.0.
+     *
+     * @since 4.0.0
+     */
+    public function getSignalPlacement(?int $storeId = null): string
+    {
+        $value = $this->getString('content_signals/placement', $storeId, self::PLACEMENT_WILDCARD);
+
+        return $value === self::PLACEMENT_PER_BOT ? self::PLACEMENT_PER_BOT : self::PLACEMENT_WILDCARD;
+    }
+
+    /**
+     * Whether to emit the short explanatory comment block above the signals,
+     * the way Cloudflare's managed file does.
+     *
+     * @since 4.0.0
+     */
+    public function isSignalPolicyCommentEnabled(?int $storeId = null): bool
+    {
+        return $this->getBool('content_signals/policy_comment', $storeId, true);
+    }
+
+    // ─── Bot verification (v4.0.0) ──────────────────────────────────────────
+
+    /**
+     * Extra Web Bot Auth signing origins the operator trusts, one per line.
+     *
+     * The catalogue ships the origins we could confirm in vendor documentation.
+     * When a vendor publishes a new one, an operator should be able to accept
+     * it without waiting for a module release — but never by taking the origin
+     * from the Signature-Agent header itself, which is the attacker-controlled
+     * value being checked.
+     *
+     * @since 4.0.0
+     * @return string[]
+     */
+    public function getTrustedSignatureAgents(?int $storeId = null): array
+    {
+        $raw = $this->getString('verification/trusted_signature_agents', $storeId, '');
+        if (trim($raw) === '') {
+            return [];
+        }
+
+        $origins = [];
+        foreach (preg_split('/[\r\n,]+/', $raw) ?: [] as $line) {
+            $line = trim($line);
+            if ($line !== '' && stripos($line, 'https://') === 0) {
+                $origins[] = rtrim($line, '/');
+            }
+        }
+
+        return array_values(array_unique($origins));
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

@@ -11,6 +11,10 @@ namespace Angeo\RobotsTxtAeo\Model\Parser;
  * - sitemaps: file-level Sitemap: directives (not bound to any group)
  * - topComments: pure-comment lines that appear before the first group
  * - unknownDirectives: directives we don't recognise (preserved for round-trip fidelity)
+ * - lines: the source document split into lines, line endings normalised
+ *
+ * @since 4.0.0 — keeps the source lines so callers can edit the document in
+ *                place instead of re-rendering it from the parsed model.
  */
 class ParsedRobotsTxt
 {
@@ -35,6 +39,15 @@ class ParsedRobotsTxt
      * @var string[]
      */
     public array $licenses = [];
+
+    /**
+     * The source document, split on "\n" after CRLF/CR normalisation and BOM
+     * removal. Indices match UserAgentGroup::$startLine / $endLine.
+     *
+     * @since 4.0.0
+     * @var string[]
+     */
+    public array $lines = [];
 
     /**
      * Find the first group declaring the given user-agent (case-insensitive).

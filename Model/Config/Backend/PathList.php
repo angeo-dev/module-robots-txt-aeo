@@ -23,6 +23,10 @@ use Magento\Framework\Exception\LocalizedException;
  */
 class PathList extends Value
 {
+    /**
+     * @return $this
+     * @throws LocalizedException
+     */
     public function beforeSave()
     {
         $raw = (string) $this->getValue();

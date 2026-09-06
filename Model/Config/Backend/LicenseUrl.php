@@ -19,7 +19,11 @@ use Magento\Framework\Exception\LocalizedException;
  */
 class LicenseUrl extends Value
 {
-    public function beforeSave(): self
+    /**
+     * @return $this
+     * @throws LocalizedException
+     */
+    public function beforeSave()
     {
         $value = trim((string) $this->getValue());
 

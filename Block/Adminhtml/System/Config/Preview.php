@@ -16,8 +16,11 @@ use Magento\Framework\View\Helper\Js;
  * Live preview of the AEO block, embedded in the admin system config page.
  *
  * v2.0.0 — all inline styles moved to view/adminhtml/web/css/angeo-robots-admin.css
- * for CSP compatibility. The CSS is loaded via the adminhtml default_head_blocks
- * layout.
+ * for CSP compatibility.
+ *
+ * @since 4.0.0 — output escaped through the framework Escaper instead of a bare
+ *                htmlspecialchars() call, and the stylesheet is loaded from the
+ *                config-page layout rather than on every admin page.
  */
 class Preview extends Fieldset
 {
@@ -52,7 +55,7 @@ class Preview extends Fieldset
         $html .= '<td colspan="4">';
         $html .= '<div class="angeo-robots-preview">';
         $html .= '<p class="angeo-robots-preview-title">Preview — AI block that will be injected</p>';
-        $html .= '<pre class="angeo-robots-preview-pre">' . htmlspecialchars($preview) . '</pre>';
+        $html .= '<pre class="angeo-robots-preview-pre">' . $this->escapeHtml($preview) . '</pre>';
         $html .= '</div>';
         $html .= '<p class="angeo-robots-preview-note">' . $note . '</p>';
         $html .= '<p class="angeo-robots-preview-note">';

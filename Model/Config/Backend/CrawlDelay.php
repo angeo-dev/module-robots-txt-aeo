@@ -17,6 +17,10 @@ use Magento\Framework\Exception\LocalizedException;
  */
 class CrawlDelay extends Value
 {
+    /**
+     * @return $this
+     * @throws LocalizedException
+     */
     public function beforeSave()
     {
         $raw = trim((string) $this->getValue());

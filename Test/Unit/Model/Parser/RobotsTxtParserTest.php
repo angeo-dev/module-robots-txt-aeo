@@ -248,13 +248,33 @@ TXT;
         $this->assertNotContains('/not-this-one/', $paths);
     }
 
-    public function testGetWildcardDisallowsExcludesEmptyAndRoot(): void
+    public function testGetWildcardDisallowsKeepsRootAndDropsEmpty(): void
     {
+        // 4.0.0: "/" is NO LONGER filtered out here. Dropping it is what let
+        // REPLACE mode turn a fully blocked site into a crawlable one.
         $content = "User-agent: *\nDisallow: /\nDisallow:\nDisallow: /admin/\n";
         $parsed  = $this->parser->parse($content);
 
         $paths = $this->parser->getWildcardDisallows($parsed);
-        $this->assertSame(['/admin/'], $paths);
+        $this->assertSame(['/', '/admin/'], $paths);
+        $this->assertTrue($this->parser->wildcardBlocksSite($parsed));
+    }
+
+    public function testWildcardBlocksSiteIsFalseForOrdinaryRules(): void
+    {
+        $parsed = $this->parser->parse("User-agent: *\nDisallow: /checkout/\nAllow: /\n");
+
+        $this->assertFalse($this->parser->wildcardBlocksSite($parsed));
+    }
+
+    public function testGroupsCarryTheirLineSpan(): void
+    {
+        $parsed = $this->parser->parse("# note\nUser-agent: *\nDisallow: /a\n\nUser-agent: GPTBot\nAllow: /\n");
+
+        $this->assertSame(1, $parsed->groups[0]->startLine);
+        $this->assertSame(2, $parsed->groups[0]->endLine);
+        $this->assertSame(4, $parsed->groups[1]->startLine);
+        $this->assertSame(5, $parsed->groups[1]->endLine);
     }
 
     // ── Complex real-world fixture ──────────────────────────────────────────

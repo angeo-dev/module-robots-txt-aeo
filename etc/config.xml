@@ -24,6 +24,12 @@
                 <cohere_ai>0</cohere_ai>
                 <amazonbot>0</amazonbot>
                 <meta_external_agent>0</meta_external_agent>
+                <meta_external_fetcher>0</meta_external_fetcher>
+                <applebot_extended>0</applebot_extended>
+                <ccbot>0</ccbot>
+                <bytespider>0</bytespider>
+                <mistralai_user>0</mistralai_user>
+                <duckassistbot>0</duckassistbot>
             </bots>
             <sitemap>
                 <mode>auto</mode>
@@ -38,7 +44,12 @@
                 <cf_search>yes</cf_search>
                 <cf_ai_train>no</cf_ai_train>
                 <cf_ai_input>unset</cf_ai_input>
+                <placement>wildcard</placement>
+                <policy_comment>1</policy_comment>
             </content_signals>
+            <verification>
+                <trusted_signature_agents></trusted_signature_agents>
+            </verification>
             <licensing>
                 <rsl_enabled>0</rsl_enabled>
                 <rsl_license_url></rsl_license_url>

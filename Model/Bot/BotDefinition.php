@@ -20,6 +20,11 @@ namespace Angeo\RobotsTxtAeo\Model\Bot;
  *                $deprecated, $supportsCrawlDelay (tri-state, replaces the
  *                hardcoded ignore-list), $ipRangesUrl, $docsUrl. Unicode-dash
  *                normalisation in UA sanitisation.
+ * @since 4.0.0 — verification metadata: $verification (which proof methods the
+ *                vendor supports), $jwksUrl (Web Bot Auth key directory) and
+ *                $ipRangesShared (the vendor publishes one list for all of its
+ *                crawlers, so an address proves the operator, not the bot).
+ *                BOTS_IGNORING_CRAWL_DELAY removed — deprecated in 3.0.0.
  */
 final class BotDefinition
 {
@@ -29,14 +34,25 @@ final class BotDefinition
     public const CATEGORY_ADS       = 'ads';         // ad landing-page validation
     public const CATEGORY_TOKEN     = 'token';       // robots.txt control token only — never in logs
 
-    /**
-     * @deprecated since 3.0.0 — superseded by per-bot $supportsCrawlDelay
-     *             metadata. Anthropic's 2026-02 documentation update states
-     *             Crawl-delay IS supported, contradicting this list's
-     *             ClaudeBot entry. Retained only so external readers of this
-     *             constant do not fatal; do not use in new code.
-     */
-    public const BOTS_IGNORING_CRAWL_DELAY = ['GPTBot', 'ClaudeBot', 'Google-Extended'];
+    // ── Verification methods (4.0.0) ─────────────────────────────────────
+    // How a request claiming this user-agent can actually be PROVEN to come
+    // from the vendor. The User-agent header itself proves nothing.
+
+    /** Vendor publishes a machine-readable list of source IP ranges. */
+    public const VERIFY_IP_RANGE = 'ip_range';
+
+    /** Vendor signs requests per Web Bot Auth (RFC 9421 + JWKS directory). */
+    public const VERIFY_WEB_BOT_AUTH = 'web_bot_auth';
+
+    /** Vendor publishes no verification rail at all. */
+    public const VERIFY_NONE = 'none';
+
+    /** @var string[] */
+    public const VERIFICATION_METHODS = [
+        self::VERIFY_IP_RANGE,
+        self::VERIFY_WEB_BOT_AUTH,
+        self::VERIFY_NONE,
+    ];
 
     /**
      * @param string[] $allowPaths
@@ -60,6 +76,10 @@ final class BotDefinition
         public readonly ?bool   $supportsCrawlDelay = null,
         public readonly ?string $ipRangesUrl        = null,
         public readonly ?string $docsUrl            = null,
+        public readonly array   $verification       = [],
+        public readonly ?string $jwksUrl            = null,
+        public readonly array   $signatureAgents    = [],
+        public readonly bool    $ipRangesShared     = false,
     ) {}
 
     /**
@@ -94,6 +114,10 @@ final class BotDefinition
                                     : null,
             ipRangesUrl:        isset($data['ip_ranges_url']) ? (string) $data['ip_ranges_url'] : null,
             docsUrl:            isset($data['docs_url'])      ? (string) $data['docs_url']      : null,
+            verification:       self::normaliseVerification($data),
+            jwksUrl:            isset($data['jwks_url'])      ? (string) $data['jwks_url']      : null,
+            signatureAgents:    self::asStringArray($data['signature_agents'] ?? []),
+            ipRangesShared:     (bool) ($data['ip_ranges_shared'] ?? false),
         );
     }
 
@@ -134,7 +158,76 @@ final class BotDefinition
             'supports_crawl_delay' => $this->supportsCrawlDelay,
             'ip_ranges_url'        => $this->ipRangesUrl,
             'docs_url'             => $this->docsUrl,
+            'verification'         => $this->verification,
+            'jwks_url'             => $this->jwksUrl,
+            'signature_agents'     => $this->signatureAgents,
+            'ip_ranges_shared'     => $this->ipRangesShared,
         ];
+    }
+
+    /**
+     * Whether this bot supports the given verification method.
+     *
+     * @since 4.0.0
+     */
+    public function supportsVerification(string $method): bool
+    {
+        return in_array($method, $this->verification, true);
+    }
+
+    /**
+     * Whether any proof of identity is available for this bot.
+     *
+     * @since 4.0.0
+     */
+    public function isVerifiable(): bool
+    {
+        return $this->verification !== [] && $this->verification !== [self::VERIFY_NONE];
+    }
+
+    /**
+     * Derive the verification method list from a catalogue row. An explicit
+     * "verification" key wins; otherwise it is inferred from the presence of
+     * the endpoints, so a catalogue entry cannot claim a rail it has no URL for.
+     *
+     * @param array<string, mixed> $data
+     * @return string[]
+     * @since 4.0.0
+     */
+    private static function normaliseVerification(array $data): array
+    {
+        $methods = [];
+
+        if (isset($data['verification']) && is_array($data['verification'])) {
+            foreach ($data['verification'] as $method) {
+                $method = (string) $method;
+                if (in_array($method, self::VERIFICATION_METHODS, true)) {
+                    $methods[] = $method;
+                }
+            }
+        }
+
+        if (!empty($data['ip_ranges_url']) && !in_array(self::VERIFY_IP_RANGE, $methods, true)) {
+            $methods[] = self::VERIFY_IP_RANGE;
+        }
+        if ((!empty($data['jwks_url']) || !empty($data['signature_agents']))
+            && !in_array(self::VERIFY_WEB_BOT_AUTH, $methods, true)
+        ) {
+            $methods[] = self::VERIFY_WEB_BOT_AUTH;
+        }
+
+        // A claimed rail without its endpoint is not a rail.
+        $methods = array_values(array_filter($methods, static function (string $method) use ($data): bool {
+            if ($method === self::VERIFY_IP_RANGE) {
+                return !empty($data['ip_ranges_url']);
+            }
+            if ($method === self::VERIFY_WEB_BOT_AUTH) {
+                return !empty($data['jwks_url']) || !empty($data['signature_agents']);
+            }
+            return true;
+        }));
+
+        return $methods === [] ? [self::VERIFY_NONE] : $methods;
     }
 
     /**

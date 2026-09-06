@@ -142,4 +142,36 @@ class RepMatcherTest extends TestCase
         $this->assertFalse($this->decide($robots, 'GPTBot', '/checkout/cart')->allowed);
         $this->assertTrue($this->decide($robots, 'ClaudeBot', '/product/1')->allowed);
     }
+
+    // ── v4.0.0 hardening ────────────────────────────────────────────────────
+
+    public function testPathologicalPatternDoesNotHangTheMatcher(): void
+    {
+        // robots.txt is untrusted input. "/a*a*a*…b" compiled naively is an
+        // exponential matcher; the wildcard cap makes it a no-op instead.
+        $parsed = $this->parser->parse("User-agent: *\nDisallow: /" . str_repeat('a*', 25) . "b\n");
+
+        $started  = microtime(true);
+        $decision = $this->matcher->isAllowed($parsed, 'AnyBot', '/' . str_repeat('a', 400));
+        $elapsed  = microtime(true) - $started;
+
+        $this->assertLessThan(1.0, $elapsed, 'Pattern matching must stay bounded.');
+        $this->assertTrue($decision->allowed, 'A refused pattern must not block by accident.');
+    }
+
+    public function testRepeatedWildcardsBehaveLikeOne(): void
+    {
+        $parsed = $this->parser->parse("User-agent: *\nDisallow: /a**b\n");
+
+        $this->assertFalse($this->matcher->isAllowed($parsed, 'AnyBot', '/axxb')->allowed);
+        $this->assertTrue($this->matcher->isAllowed($parsed, 'AnyBot', '/axx')->allowed);
+    }
+
+    public function testOverlongPatternIsIgnored(): void
+    {
+        $pattern = '/' . str_repeat('a', RepMatcher::MAX_PATTERN_LENGTH + 10);
+        $parsed  = $this->parser->parse("User-agent: *\nDisallow: {$pattern}\n");
+
+        $this->assertTrue($this->matcher->isAllowed($parsed, 'AnyBot', $pattern)->allowed);
+    }
 }

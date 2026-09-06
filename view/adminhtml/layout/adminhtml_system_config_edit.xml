@@ -1,4 +1,9 @@
 <?xml version="1.0"?>
+<!--
+    The admin stylesheet is loaded on the configuration pages (where the live
+    preview fieldset renders) and on the module dashboard — not on every admin
+    page, which is what view/adminhtml/layout/default.xml used to do.
+-->
 <page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
     <head>
