@@ -114,7 +114,7 @@ class WebBotAuthVerifier implements BotVerifierInterface
             );
         }
 
-        $lastFailure = null;
+        $lastFailure = VerificationResult::failed($method, 'No signature could be verified.', $bot->userAgent);
 
         foreach ($signatures as $signature) {
             $result = $this->verifyOne($bot, $request, $signature, $origin);
@@ -124,7 +124,7 @@ class WebBotAuthVerifier implements BotVerifierInterface
             $lastFailure = $result;
         }
 
-        return $lastFailure ?? VerificationResult::failed($method, 'No signature could be verified.', $bot->userAgent);
+        return $lastFailure;
     }
 
     private function verifyOne(

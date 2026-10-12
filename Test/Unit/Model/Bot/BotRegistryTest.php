@@ -34,9 +34,10 @@ class BotRegistryTest extends TestCase
     {
         $builtins = $this->build()->builtins();
         $expected = [
-            'oai_searchbot', 'gptbot', 'chatgpt_user', 'perplexitybot', 'perplexity_user',
-            'google_extended', 'claudebot', 'anthropic_ai',
-            'claude_user', 'applebot', 'cohere_ai', 'amazonbot', 'meta_external_agent',
+            'oai_searchbot', 'gptbot', 'chatgpt_user', 'oai_adsbot', 'perplexitybot', 'perplexity_user',
+            'google_extended', 'claudebot', 'claude_user', 'claude_searchbot', 'anthropic_ai',
+            'applebot', 'applebot_extended', 'cohere_ai', 'amazonbot', 'meta_external_agent',
+            'meta_external_fetcher', 'ccbot', 'bytespider', 'mistralai_user', 'duckassistbot',
         ];
         $this->assertCount(count($expected), $builtins);
         foreach ($expected as $key) {

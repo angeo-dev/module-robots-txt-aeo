@@ -48,7 +48,7 @@ class VerifyBotIpCommand extends Command
         $ip  = trim((string) $input->getArgument('ip'));
         $bot = $input->getOption('bot');
 
-        if (@inet_pton($ip) === false) {
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
             $output->writeln('<error>"' . $ip . '" is not a valid IPv4/IPv6 address.</error>');
             return Command::FAILURE;
         }

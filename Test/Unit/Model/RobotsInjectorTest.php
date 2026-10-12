@@ -203,6 +203,7 @@ TXT;
                 label:      'GPTBot',
                 description: 'test',
                 crawlDelay: 30.0,
+                supportsCrawlDelay: true,
             ),
         ];
         $this->configureInjectMode($bots);
@@ -230,6 +231,7 @@ TXT;
                 label:       'GPTBot',
                 description: 'test',
                 crawlDelay:  2.5,
+                supportsCrawlDelay: true,
             ),
         ];
         $this->configureInjectMode($bots);
@@ -475,6 +477,7 @@ TXT;
             label:       'PerplexityBot',
             description: 'Perplexity indexer',
             crawlDelay:  5.0,
+            supportsCrawlDelay: true,
         );
         $this->configureInjectMode(['perplexitybot' => $bot]);
         $output = $this->injector->process('');

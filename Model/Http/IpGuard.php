@@ -63,7 +63,7 @@ class IpGuard
     public function isAllowedAddress(string $ip): bool
     {
         $ip = trim($ip);
-        if ($ip === '' || @inet_pton($ip) === false) {
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
             return false;
         }
 
@@ -100,7 +100,7 @@ class IpGuard
             return [];
         }
 
-        if (@inet_pton($host) !== false) {
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
             return $this->isAllowedAddress($host) ? [$host] : [];
         }
 
@@ -127,12 +127,18 @@ class IpGuard
     {
         $addresses = [];
 
-        $v4 = @gethostbynamel($host);
+        $v4 = gethostbynamel($host);
         if (is_array($v4)) {
             $addresses = $v4;
         }
 
-        $v6 = @dns_get_record($host, DNS_AAAA);
+        // dns_get_record() raises a warning on lookup failure; treat that as "no records".
+        set_error_handler(static fn (): bool => true);
+        try {
+            $v6 = dns_get_record($host, DNS_AAAA);
+        } finally {
+            restore_error_handler();
+        }
         if (is_array($v6)) {
             foreach ($v6 as $record) {
                 if (isset($record['ipv6']) && is_string($record['ipv6'])) {
@@ -141,7 +147,7 @@ class IpGuard
             }
         }
 
-        return array_values(array_unique(array_filter($addresses, 'strlen')));
+        return array_values(array_unique(array_filter($addresses, static fn (string $v): bool => $v !== '')));
     }
 
     /**
@@ -154,7 +160,7 @@ class IpGuard
             return null;
         }
 
-        $binary = @inet_pton($ip);
+        $binary = filter_var($ip, FILTER_VALIDATE_IP) !== false ? inet_pton($ip) : false;
         if ($binary === false || strlen($binary) !== 16) {
             return null;
         }

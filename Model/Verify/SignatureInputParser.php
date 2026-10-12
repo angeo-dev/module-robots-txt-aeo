@@ -143,7 +143,7 @@ class SignatureInputParser
                 return null;
             }
             foreach ($matches as $match) {
-                if (isset($match[2]) && $match[2] !== '') {
+                if (isset($match[2])) {
                     return null; // component parameters are not supported
                 }
                 $components[] = $match[1];

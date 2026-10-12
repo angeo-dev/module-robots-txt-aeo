@@ -38,7 +38,7 @@ class BotVerification implements BotVerificationInterface
     public function verifyIp(string $ip, ?string $userAgent = null): array
     {
         $ip = trim($ip);
-        if ($ip === '' || @inet_pton($ip) === false) {
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
             return [
                 VerificationResult::unknown(
                     BotDefinition::VERIFY_IP_RANGE,

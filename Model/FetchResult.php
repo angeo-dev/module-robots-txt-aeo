@@ -14,7 +14,7 @@ namespace Angeo\RobotsTxtAeo\Model;
  *                Previous versions carried response headers for signature
  *                verification; that surface is no longer needed.
  */
-final class FetchResult
+class FetchResult
 {
     /**
      * @internal Use FetchResult::success() or FetchResult::failure() instead.

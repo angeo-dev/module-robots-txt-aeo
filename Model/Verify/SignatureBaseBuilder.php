@@ -76,7 +76,6 @@ class SignatureBaseBuilder
             '@path'       => $this->pathOnly($request->path),
             '@query'      => $this->query($request->path),
             '@target-uri' => $request->targetUri(),
-            default       => null,
         };
     }
 

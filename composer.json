@@ -1,9 +1,9 @@
 {
     "name": "angeo/module-robots-txt-aeo",
-    "description": "Magento 2 module for AI Engine Optimization (AEO). Manages AI crawler rules in robots.txt (OAI-SearchBot, GPTBot, ChatGPT-User, PerplexityBot, Google-Extended, ClaudeBot, Claude-SearchBot, Applebot-Extended, CCBot and more) without overwriting your existing configuration, emits IETF Content-Usage, Cloudflare Content-Signal and RSL License directives, and verifies that a crawler is genuine via Web Bot Auth request signatures (RFC 9421) or vendor-published IP ranges.",
+    "description": "Magento 2 module for Answer Engine Optimization (AEO). Manages AI crawler rules in robots.txt (OAI-SearchBot, GPTBot, ChatGPT-User, PerplexityBot, Google-Extended, ClaudeBot, Claude-SearchBot, Applebot-Extended, CCBot and more) without overwriting your existing configuration, emits IETF Content-Usage, Cloudflare Content-Signal and RSL License directives, and verifies that a crawler is genuine via Web Bot Auth request signatures (RFC 9421) or vendor-published IP ranges.",
     "type": "magento2-module",
     "license": "MIT",
-    "version": "4.0.0",
+    "version": "4.0.1",
     "authors": [
         {
             "name": "Ievgenii Gryshkun",
@@ -21,7 +21,7 @@
         "robots.txt",
         "aeo",
         "ai visibility",
-        "ai engine optimization",
+        "answer engine optimization",
         "chatgpt",
         "gptbot",
         "oai-searchbot",
@@ -54,10 +54,12 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0||^11.0",
-        "magento/magento-coding-standard": "^33.0"
+        "magento/magento-coding-standard": "^40.0 || ^41.0",
+        "phpstan/phpstan": "^2.0",
+        "bitexpert/phpstan-magento": "^0.43"
     },
     "suggest": {
-        "angeo/module-aeo-audit": "Verify your robots.txt AEO signal after installation. Integrates via Angeo\\\\RobotsTxtAeo\\\\Api\\\\RobotsStatusInterface and, since 4.0.0, Api\\\\BotVerificationInterface.",
+        "angeo/module-aeo-audit": "Verify your robots.txt AEO signal after installation. Integrates via Angeo\\RobotsTxtAeo\\Api\\RobotsStatusInterface and, since 4.0.0, Api\\BotVerificationInterface.",
         "magento/module-sitemap": "Enables auto-detection of Sitemap URLs from the Magento Sitemap module."
     },
     "autoload": {
@@ -74,6 +76,18 @@
     "autoload-dev": {
         "psr-4": {
             "Angeo\\RobotsTxtAeo\\Test\\": "Test/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "phpstan/extension-installer": true,
+            "magento/composer-dependency-version-audit-plugin": false,
+            "mage-os/composer-dependency-version-audit-plugin": false,
+            "magento/magento-composer-installer": false,
+            "magento/inventory-composer-installer": false,
+            "laminas/laminas-dependency-plugin": false,
+            "php-http/discovery": false
         }
     }
 }

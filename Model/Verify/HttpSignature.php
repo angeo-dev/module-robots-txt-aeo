@@ -11,7 +11,7 @@ namespace Angeo\RobotsTxtAeo\Model\Verify;
  *
  * @since 4.0.0
  */
-final class HttpSignature
+class HttpSignature
 {
     /**
      * @param string[]             $components covered component identifiers, in order

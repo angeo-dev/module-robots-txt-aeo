@@ -14,7 +14,7 @@ namespace Angeo\RobotsTxtAeo\Model\Verify;
  *
  * @since 4.0.0
  */
-final class SignedRequest
+class SignedRequest
 {
     /** @var array<string, string> lower-cased header name => value */
     private array $headers = [];

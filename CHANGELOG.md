@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] — 2026-10-13
+
+> Patch release. Magento coding standard fixes for the Adobe Commerce
+> Marketplace technical review. No change to emitted robots.txt output.
+
+### Fixed
+
+- Admin dashboard template: status class and status text now go through the
+  escaper (`Magento2.Security.XssTemplate`).
+- Removed the `@` error-suppression operator (`Generic.PHP.NoSilencedErrors`).
+  IP checks now use `filter_var(..., FILTER_VALIDATE_IP)` before `inet_pton()`;
+  the AAAA lookup uses a scoped error handler.
+- Removed the `final` keyword from value objects
+  (`Magento2.PHP.FinalImplementation`), so plugins and proxies can wrap them.
+
+### Changed
+
+- `composer.json`: AEO is spelled out as Answer Engine Optimization.
+- PHPStan level 5 now passes (`phpstan.neon`, `bitexpert/phpstan-magento`).
+  Fixes, all without behaviour change: the admin page title is passed as a
+  string; `array_filter()` uses a typed callback instead of `'strlen'`; an
+  unreachable `match` default, an always-true comparison and an always-set
+  `??` fallback were removed.
+
+### Build
+
+- `composer.json`: added the suite-wide `config.allow-plugins` block. Without
+  it, `composer install` / `composer update` stopped on Composer 2.2+ with
+  "magento/composer-dependency-version-audit-plugin ... is blocked by your
+  allow-plugins config".
+- Dev dependencies match the rest of the suite:
+  `magento/magento-coding-standard` ^40 || ^41 (was ^33), `phpstan/phpstan`
+  ^2, `bitexpert/phpstan-magento` ^0.43.
+- CI runs on PHP 8.2 – 8.5. 8.1 was removed from the matrix because the
+  module requires PHP 8.2 or later.
+- `Test/Unit/bootstrap.php` declares Magento's generated `*Factory` classes,
+  as in `module-aeo-audit`, so `UrlFetcherTest` can mock `CurlFactory`.
+- Tests updated to 4.0.0 behaviour: the bot catalogue has 21 entries, and a
+  bot emits `Crawl-delay` only with `supportsCrawlDelay: true`.
+- `.gitignore` for `vendor/`, `composer.lock` and PHPUnit caches.
+- The `suggest` text for `angeo/module-aeo-audit` showed double backslashes.
+
 ## [4.0.0] — 2026-09-05
 
 Major release. Two themes: robots.txt is a request, so this version adds the

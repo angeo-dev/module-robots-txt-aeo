@@ -1,0 +1,32 @@
+includes:
+    - vendor/bitexpert/phpstan-magento/extension.neon
+
+parameters:
+    level: 5
+
+    paths:
+        - .
+
+    excludePaths:
+        analyseAndScan:
+            - vendor
+            - Test
+
+    # Magento core PHPDoc blocks are often inaccurate; do not treat them as facts
+    treatPhpDocTypesAsCertain: false
+
+    # Do not fail when an ignore pattern matches nothing
+    reportUnmatchedIgnoredErrors: false
+
+    ignoreErrors:
+        # Magento service contracts are narrower than the concrete classes the
+        # object manager actually returns. Calling Store and Request methods
+        # through the interface is standard practice in Magento.
+        - '#Call to an undefined method Magento\\Store\\Api\\Data\\StoreInterface::#'
+        - '#Call to an undefined method Magento\\Framework\\App\\RequestInterface::#'
+
+        # Kept for constructor compatibility (tests and DI configs pass it);
+        # not used since the sitemap lookup moved to MagentoSitemapProvider.
+        -
+            identifier: property.onlyWritten
+            path: Model/SitemapResolver.php

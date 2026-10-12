@@ -22,7 +22,7 @@ class Index extends Action
     public function execute()
     {
         $resultPage = $this->resultPageFactory->create();
-        $resultPage->getConfig()->getTitle()->prepend(__('Angeo — Robots.txt AEO'));
+        $resultPage->getConfig()->getTitle()->prepend((string) __('Angeo — Robots.txt AEO'));
         return $resultPage;
     }
 }

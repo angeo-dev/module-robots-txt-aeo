@@ -167,7 +167,7 @@ class Config
         }
 
         $items = preg_split('/[\r\n,]+/', $raw) ?: [];
-        $items = array_filter(array_map('trim', $items), 'strlen');
+        $items = array_filter(array_map('trim', $items), static fn (string $v): bool => $v !== '');
         return array_values(array_unique($items));
     }
 

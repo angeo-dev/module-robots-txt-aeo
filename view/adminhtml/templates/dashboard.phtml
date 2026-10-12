@@ -94,8 +94,8 @@ $dashboardConfig = [
                         <tr data-bot="<?= $block->escapeHtmlAttr($bot->userAgent) ?>">
                             <td><strong><?= $block->escapeHtml($bot->userAgent) ?></strong></td>
                             <td>
-                                <span class="angeo-status-badge <?= $statusClass ?>">
-                                    <?= $statusText ?>
+                                <span class="angeo-status-badge <?= $block->escapeHtmlAttr($statusClass) ?>">
+                                    <?= $block->escapeHtml($statusText) ?>
                                 </span>
                             </td>
                             <td class="angeo-bot-desc"><?= $block->escapeHtml($bot->description) ?></td>

@@ -26,7 +26,7 @@ namespace Angeo\RobotsTxtAeo\Model\Bot;
  *                crawlers, so an address proves the operator, not the bot).
  *                BOTS_IGNORING_CRAWL_DELAY removed — deprecated in 3.0.0.
  */
-final class BotDefinition
+class BotDefinition
 {
     public const CATEGORY_TRAINING   = 'training';   // collects content for model training
     public const CATEGORY_SEARCH     = 'search';     // builds a search/citation index
@@ -259,7 +259,7 @@ final class BotDefinition
     private static function asStringArray(mixed $value): array
     {
         if (is_string($value)) {
-            $value = array_filter(array_map('trim', explode(',', $value)), 'strlen');
+            $value = array_filter(array_map('trim', explode(',', $value)), static fn (string $v): bool => $v !== '');
         }
         if (!is_array($value)) {
             return [];

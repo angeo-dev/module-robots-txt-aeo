@@ -9,7 +9,7 @@ namespace Angeo\RobotsTxtAeo\Model\Rep;
  *
  * @since 3.0.0
  */
-final class AccessDecision
+class AccessDecision
 {
     public const SOURCE_EXACT    = 'exact';    // a group named the token
     public const SOURCE_WILDCARD = 'wildcard'; // fell back to the * group

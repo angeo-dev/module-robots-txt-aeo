@@ -13,7 +13,7 @@ namespace Angeo\RobotsTxtAeo\Model\Verify;
  *
  * @since 4.0.0
  */
-final class VerificationResult
+class VerificationResult
 {
     /** Proof succeeded — the request really is from the vendor. */
     public const STATE_VERIFIED = 'verified';

@@ -37,8 +37,8 @@ class CidrMatcher
         }
         $bits = (int) $bits;
 
-        $ipBin     = @inet_pton($ip);
-        $subnetBin = @inet_pton($subnet);
+        $ipBin     = filter_var($ip, FILTER_VALIDATE_IP) !== false ? inet_pton($ip) : false;
+        $subnetBin = filter_var($subnet, FILTER_VALIDATE_IP) !== false ? inet_pton($subnet) : false;
         if ($ipBin === false || $subnetBin === false) {
             return false;
         }
@@ -109,6 +109,6 @@ class CidrMatcher
     {
         $value = trim($value);
         $addr  = str_contains($value, '/') ? explode('/', $value, 2)[0] : $value;
-        return @inet_pton($addr) !== false;
+        return filter_var($addr, FILTER_VALIDATE_IP) !== false;
     }
 }

@@ -414,7 +414,7 @@ class UrlFetcher
         }
 
         $host = strtolower((string) $parts['host']);
-        if (@inet_pton(trim($host, '[]')) !== false) {
+        if (filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) !== false) {
             return []; // literal address — nothing to pin
         }
 

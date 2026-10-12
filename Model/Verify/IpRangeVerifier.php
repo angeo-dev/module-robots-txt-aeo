@@ -51,7 +51,7 @@ class IpRangeVerifier implements BotVerifierInterface
         $method = $this->getMethod();
         $ip     = $request->remoteAddress;
 
-        if ($ip === null || $ip === '' || @inet_pton($ip) === false) {
+        if ($ip === null || $ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
             return VerificationResult::unknown(
                 $method,
                 'No source IP address was supplied, so the range check cannot run.',
