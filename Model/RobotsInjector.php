@@ -25,6 +25,10 @@ use Psr\Log\LoggerInterface;
  * @since 3.0.0 — third-party directives (License, Content-Usage,
  *                Content-Signal) survive a rebuild; optional emission of
  *                Content-Usage, Content-Signal and RSL License.
+ * @since 4.1.0 — crawl hygiene: private-page Disallow rules are repeated in
+ *                every managed bot group (a bot with its own group ignores
+ *                "User-agent: *"), and a wildcard group is added when the
+ *                file has none.
  * @since 4.0.0 — three changes worth knowing about before upgrading:
  *
  *   1. INJECT mode no longer re-renders the file. Previous versions parsed the
@@ -132,11 +136,19 @@ class RobotsInjector
             $cleaned = $this->attachSignalsToWildcardGroup($cleaned, $signalLines);
         }
 
+        $hasWildcard   = $this->hasWildcardGroup($cleaned);
+        $hygiene       = $this->hygienePaths($cleaned, $storeId);
+        $addWildcard   = !$hasWildcard && $this->config->addWildcardGroup($storeId);
+        $wildcardRules = $addWildcard ? $this->sanitizer->paths($this->config->getCrawlHygienePaths($storeId)) : [];
+
         $block = $this->buildAngeoBlock(
             $enabledBots,
             $perBot ? $signalLines : [],
-            !$perBot && $signalLines !== [] && !$this->hasWildcardGroup($cleaned) ? $signalLines : [],
-            $storeId
+            !$perBot && $signalLines !== [] && !$hasWildcard ? $signalLines : [],
+            $storeId,
+            $hygiene,
+            $wildcardRules,
+            $addWildcard
         );
 
         $licenseLine  = $this->buildLicenseLine($storeId, $cleaned);
@@ -312,7 +324,8 @@ class RobotsInjector
             $enabledBots,
             $perBot ? $signalLines : [],
             [],
-            $storeId
+            $storeId,
+            $this->hygienePaths($existingContent, $storeId)
         );
 
         $customContent = $this->sanitizer->block($this->config->getCustomContent($storeId));
@@ -477,12 +490,18 @@ class RobotsInjector
      * @param array<string, BotDefinition> $enabledBots
      * @param string[] $perBotSignals    signal lines repeated in every managed group
      * @param string[] $trailingSignals  signal lines emitted as a wildcard group after the bots
+     * @param string[] $hygiene        Disallow values repeated in every managed bot group (4.1.0)
+     * @param string[] $wildcardRules  Disallow values for an added "User-agent: *" group (4.1.0)
+     * @param bool     $addWildcard    emit a "User-agent: *" group: the file has none (4.1.0)
      */
     private function buildAngeoBlock(
         array $enabledBots,
         array $perBotSignals = [],
         array $trailingSignals = [],
         ?int $storeId = null,
+        array $hygiene = [],
+        array $wildcardRules = [],
+        bool $addWildcard = false,
     ): string {
         $lines   = [];
         $lines[] = self::BLOCK_HEADER;
@@ -500,6 +519,14 @@ class RobotsInjector
 
             $disallow           = $this->sanitizer->paths($bot->disallowPaths);
             $disallowBlocksRoot = $this->pathListBlocksRoot($disallow);
+
+            // Crawl hygiene (4.1.0): this group replaces "User-agent: *" for
+            // the bot, so the private-page rules must be repeated here. Not
+            // for control tokens (they never fetch) and not when the bot is
+            // blocked from the root anyway.
+            if ($hygiene !== [] && !$bot->tokenOnly && !$disallowBlocksRoot) {
+                $disallow = array_values(array_unique(array_merge($disallow, $hygiene)));
+            }
 
             // Resolve Allow paths — when explicit Disallow: / is present we
             // omit the implicit Allow: / fallback (audit warns about
@@ -531,11 +558,20 @@ class RobotsInjector
             $lines[] = '';
         }
 
-        if ($trailingSignals !== []) {
+        if ($trailingSignals !== [] || $addWildcard) {
             foreach ($this->policyComment($storeId, $trailingSignals) as $comment) {
                 $lines[] = $comment;
             }
+            if ($addWildcard) {
+                $lines[] = '# Rules for every other bot (search engines included)';
+            }
             $lines[] = 'User-agent: *';
+            foreach ($wildcardRules as $path) {
+                $lines[] = 'Disallow: ' . $path;
+            }
+            if ($addWildcard && $wildcardRules === [] && $trailingSignals === []) {
+                $lines[] = 'Allow: /';
+            }
             foreach ($trailingSignals as $signalLine) {
                 $lines[] = $signalLine;
             }
@@ -545,6 +581,30 @@ class RobotsInjector
         $lines[] = self::BLOCK_FOOTER;
 
         return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * Disallow values added to every managed bot group: the configured
+     * hygiene paths plus, when enabled, the wildcard group's own Disallow
+     * lines. A site-wide block ("/") is never copied: the operator enabled
+     * these bots on purpose.
+     *
+     * @since 4.1.0
+     * @return string[]
+     */
+    private function hygienePaths(string $content, ?int $storeId): array
+    {
+        $paths = $this->config->getCrawlHygienePaths($storeId);
+
+        if (trim($content) !== '' && $this->config->inheritWildcardDisallows($storeId)) {
+            foreach ($this->parser->getWildcardDisallows($this->parser->parse($content)) as $path) {
+                if ($path !== '/' && $path !== '/*') {
+                    $paths[] = $path;
+                }
+            }
+        }
+
+        return $this->sanitizer->paths($paths);
     }
 
     private function formatDelay(float $delay): string
@@ -676,6 +736,12 @@ class RobotsInjector
                     $bot->userAgent
                 );
             }
+        }
+
+        if (!$this->hasWildcardGroup($content)) {
+            $result['warnings'][] = 'This robots.txt has no "User-agent: *" group, so search engines and '
+                . 'unlisted bots get no rules and may crawl account, cart and checkout pages. Enable '
+                . 'Crawl Hygiene > "Add a User-agent: * group", or add one in Content > Design > Configuration.';
         }
 
         if ($this->config->getMode($storeId) === Config::MODE_REPLACE

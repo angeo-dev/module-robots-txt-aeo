@@ -48,6 +48,50 @@ class ConfigTest extends TestCase
         $this->assertSame(Config::MODE_INJECT, $this->config->getMode());
     }
 
+    // ── Crawl hygiene (4.1.0) ───────────────────────────────────────────────
+
+    public function testCrawlHygieneDefaultsToPrivatePagesAndSortParams(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturn(null);
+
+        $paths = $this->config->getCrawlHygienePaths();
+
+        $this->assertContains('/checkout/', $paths);
+        $this->assertContains('/customer/', $paths);
+        $this->assertContains('/*?*product_list_order=', $paths);
+        $this->assertTrue($this->config->addWildcardGroup());
+        $this->assertTrue($this->config->inheritWildcardDisallows());
+    }
+
+    public function testCrawlHygieneAddsFiltersAndExtraPaths(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturnCallback(
+            static fn (string $path): ?string => match ($path) {
+                'angeo_robots_txt_aeo/crawl_hygiene/magento_private' => '0',
+                'angeo_robots_txt_aeo/crawl_hygiene/sort_params'     => '0',
+                'angeo_robots_txt_aeo/crawl_hygiene/filter_params'   => "color\nbad code\nPrice",
+                'angeo_robots_txt_aeo/crawl_hygiene/extra_disallow'  => "tmp/\n/private/",
+                default                                              => null,
+            }
+        );
+
+        $this->assertSame(
+            ['/*?*color=', '/*?*price=', '/tmp/', '/private/'],
+            $this->config->getCrawlHygienePaths()
+        );
+    }
+
+    public function testCrawlHygieneOffReturnsNothing(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturnCallback(
+            static fn (string $path): ?string => $path === 'angeo_robots_txt_aeo/crawl_hygiene/enabled' ? '0' : null
+        );
+
+        $this->assertSame([], $this->config->getCrawlHygienePaths());
+        $this->assertFalse($this->config->addWildcardGroup());
+        $this->assertFalse($this->config->inheritWildcardDisallows());
+    }
+
     // ── getEnabledBots ──────────────────────────────────────────────────────
 
     public function testGetEnabledBotsRespectsConfig(): void

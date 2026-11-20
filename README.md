@@ -15,6 +15,29 @@ Fixes the **"robots.txt — AI Bot Access"** signal in [`angeo/module-aeo-audit`
 
 ---
 
+## What's new in 4.1
+
+**Crawl hygiene.** A bot with its own `User-agent` group ignores
+`User-agent: *`. So the AI bot groups this module writes used to skip your
+`Disallow: /checkout/` and similar rules. Now every managed group repeats
+them: your wildcard Disallow lines, Magento private pages
+(`/checkout/`, `/customer/`, `/wishlist/` …) and sorting parameters. You can
+also block layered navigation filters by attribute code. When the file has
+no `User-agent: *` group at all, one is added, so search engines get rules
+too. Settings: *Stores → Configuration → Angeo → Robots.txt AEO → Crawl
+Hygiene*.
+
+```
+User-agent: GPTBot
+Allow: /
+Disallow: /checkout/
+Disallow: /customer/
+Disallow: /*?*product_list_order=
+Disallow: /*?*color=
+```
+
+---
+
 ## What's new in 4.0
 
 **robots.txt asks. Web Bot Auth proves.**

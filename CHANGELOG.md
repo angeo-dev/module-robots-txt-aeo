@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] — 2026-10-24
+
+> Minor release. **Crawl hygiene.** Output changes for existing installs:
+> managed bot groups now carry Disallow rules for private pages, and a
+> `User-agent: *` group is added when the file has none. Turn it off under
+> *Crawl Hygiene* to keep the 4.0 output.
+
+### Fixed
+
+- **AI bots were allowed into account, cart and checkout pages.** RFC 9309:
+  a crawler obeys only the most specific group that names it. Every bot this
+  module writes a group for (`User-agent: GPTBot` + `Allow: /`) therefore
+  ignored the store's `User-agent: *` rules such as `Disallow: /checkout/`.
+  Found on demo.angeo.dev, where crawlers fetched login pages.
+- **A file without a wildcard group gave search engines no rules.** When the
+  store had no `User-agent: *` group, the managed block was the whole file,
+  so Googlebot and Bingbot could crawl everything, including `/customer/`.
+
+### Added
+
+- **Crawl Hygiene** settings (*Stores → Configuration → Angeo → Robots.txt
+  AEO → Crawl Hygiene*), all per store view:
+  - copy the Disallow lines of the existing `User-agent: *` group into every
+    managed bot group (on). A site-wide `Disallow: /` is never copied;
+  - block Magento private pages: `/checkout/`, `/customer/`, `/wishlist/`,
+    `/catalog/product_compare/`, `/catalogsearch/`, `/sendfriend/`,
+    `/sales/` (on);
+  - block sorting and page-size URLs: `product_list_order`, `_dir`,
+    `_limit`, `_mode` as `Disallow: /*?*name=` (on);
+  - block layered navigation filters by attribute code (empty by default;
+    `angeo/module-agent-activity` 1.2 lists the parameters crawlers use);
+  - extra Disallow paths for all AI bots;
+  - add a `User-agent: *` group with these rules when the file has none (on).
+  Control tokens that never fetch (Google-Extended, Applebot-Extended) get no
+  extra lines. A bot blocked from the root keeps its own rules only.
+- `validate()` and the dashboard warn when robots.txt has no wildcard group.
+- `Model\Config\Backend\QueryParamList`: filter parameters must be
+  attribute codes.
+
 ## [4.0.1] — 2026-10-13
 
 > Patch release. Magento coding standard fixes for the Adobe Commerce

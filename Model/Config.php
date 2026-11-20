@@ -171,6 +171,95 @@ class Config
         return array_values(array_unique($items));
     }
 
+    // ─── Crawl hygiene (v4.1.0) ─────────────────────────────────────────────
+    // RFC 9309: a crawler obeys only the most specific group that names it.
+    // A bot with its own group therefore skips every rule in "User-agent: *".
+    // These settings carry the "keep out of private pages" rules into the
+    // groups this module writes.
+
+    /** Pages with no content for crawlers, on every Magento store. */
+    public const MAGENTO_PRIVATE_PATHS = [
+        '/checkout/',
+        '/customer/',
+        '/wishlist/',
+        '/catalog/product_compare/',
+        '/catalogsearch/',
+        '/sendfriend/',
+        '/sales/',
+    ];
+
+    /** Toolbar parameters: same products, other order or page size. */
+    public const SORT_PARAMS = ['product_list_order', 'product_list_dir', 'product_list_limit', 'product_list_mode'];
+
+    public function isCrawlHygieneEnabled(?int $storeId = null): bool
+    {
+        return $this->getBool('crawl_hygiene/enabled', $storeId, true);
+    }
+
+    /**
+     * Copy the Disallow lines of the existing wildcard group into bot groups.
+     */
+    public function inheritWildcardDisallows(?int $storeId = null): bool
+    {
+        return $this->isCrawlHygieneEnabled($storeId)
+            && $this->getBool('crawl_hygiene/inherit_wildcard', $storeId, true);
+    }
+
+    /**
+     * Add a "User-agent: *" group when the file has none.
+     */
+    public function addWildcardGroup(?int $storeId = null): bool
+    {
+        return $this->isCrawlHygieneEnabled($storeId)
+            && $this->getBool('crawl_hygiene/wildcard_group', $storeId, true);
+    }
+
+    /**
+     * Disallow values for every managed bot group: Magento private pages,
+     * sorting parameters, configured filter parameters and extra paths.
+     * Not sanitised here; the injector sanitises at render time.
+     *
+     * @return string[]
+     */
+    public function getCrawlHygienePaths(?int $storeId = null): array
+    {
+        if (!$this->isCrawlHygieneEnabled($storeId)) {
+            return [];
+        }
+
+        $paths = [];
+        if ($this->getBool('crawl_hygiene/magento_private', $storeId, true)) {
+            $paths = self::MAGENTO_PRIVATE_PATHS;
+        }
+
+        $params = $this->getBool('crawl_hygiene/sort_params', $storeId, true) ? self::SORT_PARAMS : [];
+        foreach ($this->splitList($this->getString('crawl_hygiene/filter_params', $storeId, '')) as $param) {
+            $param = strtolower($param);
+            if (preg_match('/^[a-z0-9_]{1,64}$/', $param)) {
+                $params[] = $param;
+            }
+        }
+        foreach (array_unique($params) as $param) {
+            $paths[] = '/*?*' . $param . '=';
+        }
+
+        foreach ($this->splitList($this->getString('crawl_hygiene/extra_disallow', $storeId, '')) as $path) {
+            $paths[] = $path[0] === '/' || $path[0] === '*' ? $path : '/' . $path;
+        }
+
+        return array_values(array_unique($paths));
+    }
+
+    /**
+     * @return string[]
+     */
+    private function splitList(string $raw): array
+    {
+        $items = preg_split('/[\r\n,]+/', $raw) ?: [];
+
+        return array_values(array_filter(array_map('trim', $items), static fn (string $v): bool => $v !== ''));
+    }
+
     // ─── Content-usage signals & licensing (v3.0.0) ─────────────────────────
     // All three mechanisms below are OFF by default; enabling any of them is
     // an explicit operator decision. See docs/SPECIFICATION-3.0.0.md Tier 3.

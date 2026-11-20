@@ -31,6 +31,15 @@
                 <mistralai_user>0</mistralai_user>
                 <duckassistbot>0</duckassistbot>
             </bots>
+            <crawl_hygiene>
+                <enabled>1</enabled>
+                <inherit_wildcard>1</inherit_wildcard>
+                <magento_private>1</magento_private>
+                <sort_params>1</sort_params>
+                <filter_params></filter_params>
+                <extra_disallow></extra_disallow>
+                <wildcard_group>1</wildcard_group>
+            </crawl_hygiene>
             <sitemap>
                 <mode>auto</mode>
                 <custom_urls></custom_urls>

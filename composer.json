@@ -3,7 +3,7 @@
     "description": "Magento 2 module for Answer Engine Optimization (AEO). Manages AI crawler rules in robots.txt (OAI-SearchBot, GPTBot, ChatGPT-User, PerplexityBot, Google-Extended, ClaudeBot, Claude-SearchBot, Applebot-Extended, CCBot and more) without overwriting your existing configuration, emits IETF Content-Usage, Cloudflare Content-Signal and RSL License directives, and verifies that a crawler is genuine via Web Bot Auth request signatures (RFC 9421) or vendor-published IP ranges.",
     "type": "magento2-module",
     "license": "MIT",
-    "version": "4.0.1",
+    "version": "4.1.0",
     "authors": [
         {
             "name": "Ievgenii Gryshkun",

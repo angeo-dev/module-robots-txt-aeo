@@ -434,6 +434,125 @@ TXT;
         $this->config->method('getEnabledBots')->willReturn($bots);
     }
 
+    // ── v4.1.0 crawl hygiene ────────────────────────────────────────────────
+
+    public function testHygienePathsAreRepeatedInEveryBotGroup(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('getCrawlHygienePaths')->willReturn(['/checkout/', '/*?*product_list_order=']);
+
+        $output = $this->injector->process("User-agent: *\nDisallow: /tmp/\n");
+
+        $this->assertSame(1, substr_count($this->groupOf($output, 'OAI-SearchBot'), 'Disallow: /checkout/'));
+        $this->assertStringContainsString('Disallow: /*?*product_list_order=', $this->groupOf($output, 'PerplexityBot'));
+        $this->assertStringContainsString('Allow: /', $this->groupOf($output, 'PerplexityBot'));
+    }
+
+    public function testWildcardDisallowsAreInherited(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('inheritWildcardDisallows')->willReturn(true);
+
+        $output = $this->injector->process("User-agent: *\nDisallow: /private/\nDisallow: /customer/\n");
+
+        $group = $this->groupOf($output, 'OAI-SearchBot');
+        $this->assertStringContainsString('Disallow: /private/', $group);
+        $this->assertStringContainsString('Disallow: /customer/', $group);
+    }
+
+    public function testSiteWideBlockIsNeverInherited(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('inheritWildcardDisallows')->willReturn(true);
+
+        $output = $this->injector->process("User-agent: *\nDisallow: /\n");
+
+        $this->assertStringNotContainsString('Disallow: /' . "\n", $this->groupOf($output, 'OAI-SearchBot'));
+        $this->assertStringContainsString('Allow: /', $this->groupOf($output, 'OAI-SearchBot'));
+    }
+
+    public function testHygieneSkipsControlTokens(): void
+    {
+        $token = new BotDefinition(
+            key:         'google_extended',
+            userAgent:   'Google-Extended',
+            label:       'Google-Extended',
+            description: 'control token',
+            tokenOnly:   true,
+        );
+        $this->configureInjectMode(['google_extended' => $token]);
+        $this->config->method('getCrawlHygienePaths')->willReturn(['/checkout/']);
+
+        $output = $this->injector->process("User-agent: *\nDisallow: /checkout/\n");
+
+        $this->assertStringNotContainsString('Disallow', $this->groupOf($output, 'Google-Extended'));
+    }
+
+    public function testWildcardGroupIsAddedWhenMissing(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('addWildcardGroup')->willReturn(true);
+        $this->config->method('getCrawlHygienePaths')->willReturn(['/checkout/', '/customer/']);
+
+        $output = $this->injector->process('');
+
+        $this->assertSame(1, substr_count($output, 'User-agent: *'));
+        $wildcard = $this->groupOf($output, '*');
+        $this->assertStringContainsString('Disallow: /checkout/', $wildcard);
+        $this->assertStringContainsString('Disallow: /customer/', $wildcard);
+        $this->assertStringContainsString('# End Angeo AEO block', $output);
+    }
+
+    public function testWildcardGroupIsNotAddedWhenPresent(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('addWildcardGroup')->willReturn(true);
+        $this->config->method('getCrawlHygienePaths')->willReturn(['/checkout/']);
+
+        $output = $this->injector->process("User-agent: *\nDisallow: /tmp/\n");
+
+        $this->assertSame(1, substr_count($output, 'User-agent: *'));
+    }
+
+    public function testHygieneOutputIsIdempotent(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+        $this->config->method('addWildcardGroup')->willReturn(true);
+        $this->config->method('inheritWildcardDisallows')->willReturn(true);
+        $this->config->method('getCrawlHygienePaths')->willReturn(['/checkout/']);
+
+        $once  = $this->injector->process('');
+        $twice = $this->injector->process($once);
+
+        $this->assertSame($once, $twice);
+    }
+
+    public function testValidateWarnsWithoutWildcardGroup(): void
+    {
+        $this->configureInjectMode($this->sampleBots());
+
+        $result = $this->injector->validate("User-agent: GPTBot\nAllow: /\n");
+
+        $this->assertNotEmpty(array_filter(
+            $result['warnings'],
+            static fn (string $w): bool => str_contains($w, 'no "User-agent: *" group')
+        ));
+    }
+
+    /**
+     * Lines of the group that starts with "User-agent: $ua", up to the next blank line.
+     */
+    private function groupOf(string $content, string $ua): string
+    {
+        $start = strpos($content, 'User-agent: ' . $ua . "\n");
+        if ($start === false) {
+            return '';
+        }
+        $end = strpos($content, "\n\n", $start);
+
+        return substr($content, $start, $end === false ? null : $end - $start);
+    }
+
     // ── v2.0.0 audit-clean output ───────────────────────────────────────────
 
     public function testCrawlDelayIsSuppressedForGptBot(): void

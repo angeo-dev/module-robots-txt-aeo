@@ -308,6 +308,68 @@
             </group>
 
             <!-- ──────────── Sitemap ──────────── -->
+            <!-- ──────────── Crawl hygiene (v4.1.0) ──────────── -->
+            <group id="crawl_hygiene" translate="label comment" type="text" sortOrder="28"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Crawl Hygiene</label>
+                <comment><![CDATA[A bot with its own <code>User-agent</code> group ignores the <code>User-agent: *</code> group. So every AI bot this module lists would also ignore your <code>Disallow: /checkout/</code> and similar rules. These settings copy the rules that keep bots out of account, cart, checkout and search pages into every managed bot group.]]></comment>
+
+                <field id="enabled" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable crawl hygiene</label>
+                    <comment>Adds the Disallow rules below to every managed AI bot group.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="inherit_wildcard" translate="label comment" type="select" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Copy Disallow rules from User-agent: *</label>
+                    <comment>The Disallow lines of your existing wildcard group are repeated in each AI bot group.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+
+                <field id="magento_private" translate="label comment" type="select" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Block Magento private pages</label>
+                    <comment><![CDATA[<code>/checkout/</code>, <code>/customer/</code>, <code>/wishlist/</code>, <code>/catalog/product_compare/</code>, <code>/catalogsearch/</code>, <code>/sendfriend/</code>, <code>/sales/</code>. These pages have no content for crawlers.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+
+                <field id="sort_params" translate="label comment" type="select" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Block sorting and paging-size URLs</label>
+                    <comment><![CDATA[<code>product_list_order</code>, <code>product_list_dir</code>, <code>product_list_limit</code>, <code>product_list_mode</code>. They show the same products in another order.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+
+                <field id="filter_params" translate="label comment" type="textarea" sortOrder="50"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Block layered navigation filters</label>
+                    <comment><![CDATA[Attribute codes used as URL filters, one per line or comma-separated (for example <code>price</code>, <code>color</code>, <code>size</code>). Each becomes <code>Disallow: /*?*code=</code>. Leave empty to allow filter URLs. Tip: angeo/module-agent-activity 1.2+ lists the query keys crawlers actually use.]]></comment>
+                    <backend_model>Angeo\RobotsTxtAeo\Model\Config\Backend\QueryParamList</backend_model>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+
+                <field id="extra_disallow" translate="label comment" type="textarea" sortOrder="60"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Extra Disallow paths for all AI bots</label>
+                    <comment>One path per line. Added to every managed AI bot group.</comment>
+                    <backend_model>Angeo\RobotsTxtAeo\Model\Config\Backend\PathList</backend_model>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+
+                <field id="wildcard_group" translate="label comment" type="select" sortOrder="70"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Add a User-agent: * group when there is none</label>
+                    <comment>Without a wildcard group, Googlebot, Bingbot and every other bot get no rules at all. The added group carries the rules above.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+            </group>
+
             <group id="sitemap" translate="label comment" type="text" sortOrder="30"
                    showInDefault="1" showInWebsite="1" showInStore="1">
                 <label>Sitemap Directive</label>
