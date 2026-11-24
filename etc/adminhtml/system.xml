@@ -490,6 +490,44 @@
                 </field>
             </group>
 
+            <!-- ──────────── security.txt (RFC 9116, v4.2.0) ──────────── -->
+            <group id="security_txt" translate="label comment" type="text" sortOrder="45"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>security.txt</label>
+                <comment><![CDATA[Serves <code>/.well-known/security.txt</code> (RFC 9116): who to tell about a security problem in this store. <code>Expires</code> is written fresh on every request. AEO Audit and api.angeo.dev check for it. Off by default.]]></comment>
+
+                <field id="enabled" translate="label" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Serve security.txt</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="contacts" translate="label comment" type="textarea" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Contact</label>
+                    <comment><![CDATA[One per line: an e-mail address, <code>mailto:</code>, <code>https://</code> or <code>tel:</code>. Empty: the store's Customer Support e-mail.]]></comment>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+                <field id="expires_days" translate="label comment" type="text" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Expires after (days)</label>
+                    <comment>1–365. RFC 9116 asks for less than a year.</comment>
+                    <validate>validate-digits validate-digits-range digits-range-1-365</validate>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+                <field id="preferred_languages" translate="label comment" type="text" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Preferred languages</label>
+                    <comment><![CDATA[Comma-separated language tags, e.g. <code>en, nl</code>.]]></comment>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+                <field id="policy_url" translate="label comment" type="text" sortOrder="50"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Policy URL</label>
+                    <comment>Optional https:// link to your disclosure policy.</comment>
+                    <depends><field id="enabled">1</field></depends>
+                </field>
+            </group>
+
             <!-- ──────────── Live Preview ──────────── -->
             <group id="preview" translate="label" type="text" sortOrder="50"
                    showInDefault="1" showInWebsite="1" showInStore="1">

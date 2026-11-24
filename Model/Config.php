@@ -429,6 +429,36 @@ class Config
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    // ─── security.txt (4.2.0) ───────────────────────────────────────────
+
+    public function isSecurityTxtEnabled(?int $storeId = null): bool
+    {
+        return $this->getBool('security_txt/enabled', $storeId, false);
+    }
+
+    /** @return list<string> */
+    public function getSecurityTxtContacts(?int $storeId = null): array
+    {
+        $raw = $this->getString('security_txt/contacts', $storeId, '');
+
+        return array_values(array_filter(array_map('trim', preg_split('/\R/', $raw) ?: [])));
+    }
+
+    public function getSecurityTxtExpiresDays(?int $storeId = null): int
+    {
+        return (int) $this->getString('security_txt/expires_days', $storeId, '180');
+    }
+
+    public function getSecurityTxtLanguages(?int $storeId = null): string
+    {
+        return $this->getString('security_txt/preferred_languages', $storeId, '');
+    }
+
+    public function getSecurityTxtPolicyUrl(?int $storeId = null): string
+    {
+        return $this->getString('security_txt/policy_url', $storeId, '');
+    }
+
     private function getBool(string $path, ?int $storeId, bool $default): bool
     {
         $raw = $this->scopeConfig->getValue(self::XML_PREFIX . $path, ScopeInterface::SCOPE_STORE, $storeId);

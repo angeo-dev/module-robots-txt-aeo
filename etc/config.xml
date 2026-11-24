@@ -59,6 +59,13 @@
             <verification>
                 <trusted_signature_agents></trusted_signature_agents>
             </verification>
+            <security_txt>
+                <enabled>0</enabled>
+                <contacts></contacts>
+                <expires_days>180</expires_days>
+                <preferred_languages>en</preferred_languages>
+                <policy_url></policy_url>
+            </security_txt>
             <licensing>
                 <rsl_enabled>0</rsl_enabled>
                 <rsl_license_url></rsl_license_url>

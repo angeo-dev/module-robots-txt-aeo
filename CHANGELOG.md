@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] — 2026-11-23
+
+### Added
+
+- **`/.well-known/security.txt` (RFC 9116)**, *security.txt* group, off by
+  default. Contact lines from the setting, else the Customer Support e-mail;
+  `Expires` written fresh on each request (1–365 days ahead); optional
+  Preferred-Languages and Policy; `Canonical` is the served URL. No valid
+  contact → 404.
+
+### Notes
+
+- Content-Signal (`search`, `ai-input`, `ai-train`) has been in the module
+  since 3.0.0 and stays off by default: it states the merchant's policy, so
+  the merchant switches it on (*Content-Usage Signals → Emit Cloudflare
+  Content-Signal directive*).
+
 ## [4.1.0] — 2026-10-24
 
 > Minor release. **Crawl hygiene.** Output changes for existing installs:
